@@ -73,14 +73,6 @@ module.exports = {
       user.markModified('packInventory');
       await user.save();
 
-      // Reset global timers as well
-      try {
-        if (stockModule && typeof stockModule.resetStock === 'function') stockModule.resetStock();
-        if (stockModule && typeof stockModule.resetPullCounter === 'function') stockModule.resetPullCounter();
-      } catch (err) {
-        console.error('Error resetting global timers for god token:', err);
-      }
-
       const reply = 'Successfully used a **God Token**! All cooldowns and pulls have been reset.';
       if (message) return message.reply(reply);
       return interaction.reply({ content: reply });

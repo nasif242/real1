@@ -1092,6 +1092,10 @@ module.exports = {
       }
       
       if (cardId === 'accept') {
+        // Acknowledge immediately — Discord requires a response within 3 seconds.
+        // The DB lookups below can exceed that window without this early defer.
+        await safeDefer(interaction);
+
         // Check if either player already has an active duel
         let alreadyDueling = false;
         for (const [_, state] of duelStates) {
@@ -1102,7 +1106,7 @@ module.exports = {
         }
         
         if (alreadyDueling) {
-          return interaction.reply({ content: 'One or both players are already in an active duel.', ephemeral: true });
+          return interaction.followUp({ content: 'One or both players are already in an active duel.', ephemeral: true });
         }
         
         // Check for bounty duel
@@ -1184,7 +1188,7 @@ module.exports = {
           expiredEmbed.setFooter({ text: 'Expired' });
           battleMsg.edit({ embeds: [expiredEmbed], components: [] }).catch(() => {});
         }, 180000);
-        return safeDefer(interaction);
+        return; // already deferred above
       }
     }
     
