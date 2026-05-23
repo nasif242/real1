@@ -251,7 +251,7 @@ async function renderCard(interaction, session, index) {
 
   // Attach generated artifact image when necessary
   let files;
-  if (item.card && item.card.artifact && !item.card.image_url) {
+  if (item.card && item.card.artifact) {
     try {
       const buf = await generateArtifactImage(item.card);
       files = [new AttachmentBuilder(buf, { name: `artifact-${item.card.id}.png` })];
@@ -295,7 +295,7 @@ module.exports = {
 
     // Attach generated artifact image when necessary
     let files;
-    if (sorted[0].card && sorted[0].card.artifact && !sorted[0].card.image_url) {
+    if (sorted[0].card && sorted[0].card.artifact) {
       try {
         const buf = await generateArtifactImage(sorted[0].card);
         files = [new AttachmentBuilder(buf, { name: `artifact-${sorted[0].card.id}.png` })];

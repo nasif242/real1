@@ -100,7 +100,7 @@ module.exports = [
       { stage: 14, waves: [[171,172,174]] },
       { stage: 15, waves: [[58]] }
     ],
-    rewards: { firstTime: { gems: 5, ship_card: 'Baratie', id_card_1: '0050', id_card_2: '0051', bounty: 1000000 } }
+    rewards: { firstTime: { gems: 5, ship_card: 's017', id_card_1: '0050', id_card_2: '0051', bounty: 1000000 } }
   },
   {
     id: 'arlong_park',
