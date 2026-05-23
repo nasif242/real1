@@ -631,18 +631,19 @@ module.exports = {
         .setStyle(ButtonStyle.Primary)
     )];
 
-    // Attach generated image for the next card page when artifact
+    // Attach generated image for the next card page when artifact.
+    // Always pass an explicit files array so Discord clears any previous
+    // artifact attachment when navigating to a non-artifact card.
+    let files = [];
     try {
       const nextCard = pulledCards[nextIndex] && pulledCards[nextIndex].card;
-      let files;
       if (nextCard && nextCard.artifact) {
         const buf = await generateArtifactImage(nextCard);
         files = [new AttachmentBuilder(buf, { name: `artifact-${nextCard.id}.png` })];
       }
-      await interaction.update({ embeds: [embed], components: row, files });
     } catch (e) {
       console.error('Failed to generate artifact image for open update', e);
-      await interaction.update({ embeds: [embed], components: row });
     }
+    await interaction.update({ embeds: [embed], components: row, files, attachments: [] });
   }
 };

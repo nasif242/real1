@@ -44,9 +44,19 @@ async function generateArtifactImage(artifactDef) {
     if (ebuf) {
       try {
         const eimg = await loadImage(ebuf);
-        // Draw the central emoji very large to fill the context
-        const size = 320; 
-        ctx.drawImage(eimg, centerX - size / 2, centerY - size / 2, size, size);
+        // Draw the emoji maintaining its natural aspect ratio so it is
+        // never stretched or distorted. Scale to fit within a 320×320 box.
+        const maxSize = 320;
+        const aspect = eimg.width / eimg.height;
+        let drawW, drawH;
+        if (aspect >= 1) {
+          drawW = maxSize;
+          drawH = maxSize / aspect;
+        } else {
+          drawH = maxSize;
+          drawW = maxSize * aspect;
+        }
+        ctx.drawImage(eimg, centerX - drawW / 2, centerY - drawH / 2, drawW, drawH);
       } catch (e) {}
     }
   } else if (artifactDef.emoji) {
