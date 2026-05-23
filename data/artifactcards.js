@@ -153,7 +153,7 @@ const consolidatedArtifactData = [
     speed: 1,
     attack_min: 0,
     attack_max: 0,
-    boost: 'Monkey D. Luffy, (15%), Figarland Shanks, (15%)',
+    boost: 'Monkey D. Luffy, (15%), Shanks, (15%)',
     artifact: true,
     image_url: 'https://files.catbox.moe/ia6kin.webp'
   },
@@ -553,7 +553,7 @@ const consolidatedArtifactData = [
     speed: 1,
     attack_min: 0,
     attack_max: 0,
-    boost: 'Figarland Shanks, Attack (15%)',
+    boost: 'Shanks, Attack (15%)',
     artifact: true,
     image_url: null
   }

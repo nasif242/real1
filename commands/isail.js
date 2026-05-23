@@ -1261,18 +1261,8 @@ async function startBattleWithMarines({ message, interaction, user, discordUser,
   if (!user) return;
   const userId = user.userId || user.userId;
 
-  // Enforce heavy-command cooldown when starting a battle programmatically
-  try {
-    if (!tryAcquire(userId)) {
-      const errMsg = 'Please wait a moment before running this command again.';
-      if (message) {
-        try { const m = await message.reply(errMsg); setTimeout(() => m.delete().catch(() => {}), 5000); } catch (e) {}
-        return;
-      }
-      if (interaction) return interaction.reply({ content: errMsg, ephemeral: true });
-      return;
-    }
-  } catch (e) {}
+  // Heavy-command cooldown check (silent — no user-facing message)
+  try { tryAcquire(userId); } catch (e) {}
 
   const safeInteractionReply = async (payload) => {
     if (message) return message.reply(payload);
@@ -1434,18 +1424,8 @@ module.exports = {
   async execute({ message, interaction, skipMapFirst = false }) {
     const userId = message ? message.author.id : interaction.user.id;
     const discordUser = message ? message.author : interaction.user;
-    // Enforce heavy-command cooldown
-    if (!tryAcquire(userId)) {
-      const errMsg = 'Please wait a moment before running this command again.';
-      if (message) {
-        try {
-          const m = await message.reply(errMsg);
-          setTimeout(() => m.delete().catch(() => {}), 5000);
-        } catch (e) {}
-        return;
-      }
-      return interaction.reply({ content: errMsg, ephemeral: true });
-    }
+    // Heavy-command cooldown check (silent — no user-facing message)
+    try { tryAcquire(userId); } catch (e) {}
     let user = await User.findOne({ userId });
     if (!user) {
       const reply = 'You need an account first – run `op start` or /start.';
@@ -2153,9 +2133,13 @@ module.exports = {
         const effectMessages = effectLogs.length > 0 ? ` *${effectLogs.join(', ')}*` : '';
         if (act === 'special') {
           if (card.def.effect === 'team_stun') {
-            state.lastUserAction = `${card.def.emoji} **${card.def.character}** used ${card.def.special_attack ? card.def.special_attack.name : 'Special Attack'} on ${damageTarget.emoji} **${damageTarget.rank}** for **${dmg} DMG**!${effectivenessStr} *stunned the whole crew*${effectMessages} **<:energy:1478051414558118052> -${cost}**`;
+            // Only show stun text if the status effect is unlocked (star level 5+)
+            const stunMsg = _isailEffUnlocked(card.userEntry?.starLevel) ? ` *stunned the whole crew*` : '';
+            state.lastUserAction = `${card.def.emoji} **${card.def.character}** used ${card.def.special_attack ? card.def.special_attack.name : 'Special Attack'} on ${damageTarget.emoji} **${damageTarget.rank}** for **${dmg} DMG**!${effectivenessStr}${stunMsg}${effectMessages} **<:energy:1478051414558118052> -${cost}**`;
           } else {
-            state.lastUserAction = `${card.def.emoji} **${card.def.character}** used ${card.def.special_attack ? card.def.special_attack.name : 'Special Attack'} for **${dmg} DMG**!${effectivenessStr}${getEffectString(card, damageTarget)}${effectMessages} **<:energy:1478051414558118052> -${cost}**`;
+            // Only describe the status effect if it is actually unlocked (star level 5+)
+            const effectStr = _isailEffUnlocked(card.userEntry?.starLevel) ? getEffectString(card, damageTarget) : '';
+            state.lastUserAction = `${card.def.emoji} **${card.def.character}** used ${card.def.special_attack ? card.def.special_attack.name : 'Special Attack'} for **${dmg} DMG**!${effectivenessStr}${effectStr}${effectMessages} **<:energy:1478051414558118052> -${cost}**`;
           }
         } else {
           state.lastUserAction = `${card.def.emoji} **${card.def.character}** attacked ${damageTarget.emoji} **${damageTarget.rank}** for **${dmg} DMG**!${effectivenessStr}${effectMessages} **<:energy:1478051414558118052> -${cost}**`;
