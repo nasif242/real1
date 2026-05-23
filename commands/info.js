@@ -77,6 +77,15 @@ function makeInfoRow(index, total, cardDef, isOwned) {
         .setStyle(ButtonStyle.Secondary)
     );
   }
+
+  if (cardDef && cardDef.character === 'Nami') {
+    components.push(
+      new ButtonBuilder()
+        .setCustomId(`nami_ability:${cardDef.id}`)
+        .setLabel('Ability')
+        .setStyle(ButtonStyle.Secondary)
+    );
+  }
   
   return components.length ? new ActionRowBuilder().addComponents(...components) : null;
 }

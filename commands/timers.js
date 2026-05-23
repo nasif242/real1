@@ -36,7 +36,7 @@ module.exports = {
     const dailyTime = user.lastDaily ? (user.lastDaily.getTime() + 24 * 60 * 60 * 1000) - now : 0;
     const triviaTime = user.triviaCooldownUntil ? user.triviaCooldownUntil - now : 0;
     const lootTime = user.lootCooldownUntil ? user.lootCooldownUntil - now : 0;
-    const coinTime = user.betCooldownUntil ? user.betCooldownUntil - now : 0;
+    const gambleTime = user.gambleCooldownUntil ? user.gambleCooldownUntil - now : 0;
     const robTime = user.robCooldownUntil ? user.robCooldownUntil - now : 0;
     const voteTime = user.lastVoted ? (user.lastVoted.getTime() + VOTE_COOLDOWN_MS) - now : 0;
 
@@ -47,7 +47,7 @@ module.exports = {
       `Vote: ${formatTimeLeft(voteTime)}`,
       `Trivia: ${formatTimeLeft(triviaTime)}`,
       `Loot: ${formatTimeLeft(lootTime)}`,
-      `Coin: ${formatTimeLeft(coinTime)}`,
+      `Gamble Cooldown: ${formatTimeLeft(gambleTime)}`,
     ].join('\n');
 
     const embed = new EmbedBuilder()

@@ -37,6 +37,7 @@ const lootCmd = require('./commands/loot');
 const setShipCmd = require('./commands/setship');
 const depositCmd = require('./commands/deposit');
 const betCmd = require('./commands/bet');
+const gambleCmd = require('./commands/gamble');
 const forfeitCmd = require('./commands/forfeit');
 const favoriteCmd = require('./commands/favorite');
 const unfavoriteCmd = require('./commands/unfavorite');
@@ -245,6 +246,9 @@ async function main() {
         if (action === 'trivia_diff') {
           return triviaCmd.handleDifficultySelect(interaction);
         }
+        if (action === 'gamble_game' || action === 'gamble_bet' || action === 'gamble_roul') {
+          return gambleCmd.handleSelect(interaction);
+        }
         if (action === 'sail_select') {
           return require('./commands/sail').handleSelect(interaction);
         }
@@ -270,6 +274,7 @@ async function main() {
         if (commandName === 'shop') return shopCmd.execute({ interaction });
         if (commandName === 'buy') return buyCmd.execute({ interaction });
         if (commandName === 'bet') return betCmd.execute({ interaction });
+        if (commandName === 'gamble') return gambleCmd.execute({ interaction });
         if (commandName === 'trivia') return triviaCmd.execute({ interaction });
         if (commandName === 'bounty') return bountyCmd.execute({ interaction });
         if (commandName === 'user') return userCmd.execute({ interaction });
@@ -484,6 +489,16 @@ async function main() {
         if (interaction.customId && (interaction.customId.startsWith('upgrade_star_') || interaction.customId === 'upgrade_cancel')) {
           return require('./commands/upgrade').handleUpgradeButton(interaction);
         }
+
+        // handle gamble in-game buttons
+        if (action === 'gamble_btn') {
+          return gambleCmd.handleButton(interaction);
+        }
+
+        // handle nami ability info button (collection + info)
+        if (action === 'nami_ability') {
+          return gambleCmd.handleNamiAbilityButton(interaction, cardId);
+        }
       }
     } catch (err) {
       console.error(err);
@@ -551,7 +566,8 @@ async function main() {
       if (cmd === 'sell') return await sellCmd.execute({ message, args });
       if (cmd === 'shop') return await shopCmd.execute({ message });
       if (cmd === 'buy') return await buyCmd.execute({ message, args });
-      if (cmd === 'coin' || cmd === 'bet') return await betCmd.execute({ message, args });
+      if (cmd === 'bet') return await betCmd.execute({ message, args });
+      if (cmd === 'gamble') return await gambleCmd.execute({ interaction: null, message });
       if (cmd === 'bounty') return await bountyCmd.execute({ message });
       if (cmd === 'user') return await userCmd.execute({ message, args });
       if (cmd === 'leaderboard' || cmd === 'lb') return await leaderboardCmd.execute({ message, args });

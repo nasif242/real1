@@ -1,0 +1,70 @@
+# SYSTEM COMPONENT INSTRUCTION: CASINO ENGINE UPDATE & CARD AUTOMATION
+
+## 1. Commands Migration & Clean-up
+* **Deprecation:** Completely remove the standalone `op coin` and `/coin` command architectures from the codebase.
+* **Timers Alignment:** Remove the old coin tracking entry from the user's `/timers` command response matrix. Replace it with a tracking profile for `Gamble Cooldown`.
+* **Global Cooldown:** Implement a strict, account-bound 1-hour global cooldown. Once a user triggers any game session via the `/gamble` interface, they are locked out of all interactive options across the casino framework for 60 minutes.
+
+## 2. Core Structure: `/gamble` Main Dashboard
+When a user runs `/gamble`, return exactly this structure:
+* **Color:** `#ffd500`
+* **Title:** `"Casino Rain Dinners: Crocodiles Casino"`
+* **Image URL:** `https://imgs.search.brave.com/zeuK_85T9vBIdoW7ZOvYCIuSDuHWDDzD__2DecdLawc/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly9zdGF0/aWMud2lraWEubm9j/b29raWUubmV0L29u/ZXBpZWNlL2ltYWdl/cy8wLzBjL1JhaW5f/RGlubmVycy5wbmcv/cmV2aXNpb24vbGF0/ZXN0L3NjYWxlLXRv/LXdpZHRoLWRvd24v/MjY4P2NiPTIwMTMw/MzE0MjAyMTIyJnBh/dGgtcHJlZml4PWVz`
+* **Description:** "Welcome to Sir Crocodiles Casino! Here you can gamble every hour for a chance of winning beli.\n\n<:namigamble:1507864864012501022> Owning **Nami** gives you a beli boost!"
+* **Thumbnail:** Automatically fetch the active bot profile picture (`client.user.displayAvatarURL()`).
+* **Components:** A String Select Menu containing exactly these label options: `Coin flip`, `Blackjack`, `Roulette`, `Slots`, `Crash`, `Towers`, `Scratch`.
+
+## 3. Passive Multiplier Mechanic: Nami's Gambling Fortune
+* **Ability Metric:** Every Nami card variant across the collection module gains a passive modifier trait active upon reaching Star Level 1 or higher.
+* **Scaling Multiplier Formula:** Each star level accumulated on a qualifying Nami profile provides a stacking +1% global multiplier boost to gambling returns.
+* **Additive Computation:** If a user possesses multiple upgraded Nami cards, stack their percentages sequentially:
+  $$TotalBoost = \sum (StarLevel_{Nami} \times 0.01)$$
+  *(e.g., A Star Level 3 Nami (+3%) and a separate Star Level 6 Nami (+6%) grant a permanent aggregate payout modifier of 1.09x).*
+* **The "Ability" Interactive Button:**
+  * Integrate a grey secondary button labeled `"Ability"` into the component arrays on both the `/collection` and `/info` item display dashboards.
+  * **Behavior (Unowned):** If a user interacts with the button for a card they do not currently possess, return an ephemeral message: *"Nami boosts the Beli you receive from gambling depending on her star level."*
+  * **Behavior (Owned):** If the card is present in their inventory, display the specific current scaling impact value: *"Boosts the Beli you get from gambling by [X.XX]x."*
+
+## 4. Sub-Game Interface Design Rules
+* If a user selects an option but is on cooldown, intercept the interaction immediately with a clean, white ephemeral warning stating the remaining cooldown time.
+* **Aesthetic Directive:** All active gambling game embeds must switch to a pure **White (`#FFFFFF`)** embed color. Remove all excess text, flavor dialogue, and redundant summaries. The layout must remain exceptionally slick, minimalistic, and high-contrast, utilizing canvas image buffers to tell the story.
+
+## 5. Game Engine Rules & Canvas Layout Generation
+
+### 🃏 Blackjack Card Mapping Array
+Construct an empty string-mapping lookup dictionary inside the canvas rendering module. Leave the values blank or as commented placeholders so I can insert the full, direct web URLs for all 52 distinct cards later:
+```javascript
+const BLACKJACK_DECK_ASSETS = {
+  'H_A': '', 'H_2': '', 'H_3': '', // Hearts...
+  'D_A': '', 'D_2': '', 'D_3': '', // Diamonds...
+  'C_A': '', 'C_2': '', 'C_3': '', // Clubs...
+  'S_A': '', 'S_2': '', 'S_3': '', // Spades...
+  'CARD_BACK': '' // Theme backing asset
+};
+Canvas Logic: On execution, composite two clean horizontal rows directly on a transparent or neutral canvas background: "Dealer Hand" and "Player Hand". Download and draw the corresponding image assets using coordinates from the key map.
+
+🪙 Coin Flip
+Canvas Logic: Outputs a clean, minimalistic split frame layout mapping the user's pick against a single large, high-definition rendered token face (Heads or Tails).
+
+🎡 Roulette
+Canvas Logic: Displays a clean, sleek numerical layout bar or circle segment highlighting the winning number, masked in its corresponding green, red, or black base fill.
+
+🎰 Slots (Card & Attribute Matching)
+Reel Asset Sourcing: The slots game must query your existing cards data pool, filtering strictly for active attacking and boosting character cards. Use their literal in-game custom string card emojis as the scrolling reel assets.
+
+Win Condition 1 (3-of-a-Kind Card Match): If all three slot positions land on the exact same card emoji, the user wins:
+
+That specific card added directly into their inventory array.
+
+A massive Beli drop scaled up against their initial bet multiplier.
+
+The base drop rate odds for hitting a matching card tier on the reels must mirror your global drop rates file.
+
+Win Condition 2 (Attribute Synergy Match): If the three cards are not identical but all share the exact same tactical attribute type, trigger a partial win condition based on these exact probabilities:
+
+3 in 3 Attribute Match Synergy: 20% Base Chance to hit. Payout scales highly.
+
+2 in 3 Attribute Match Synergy: 50% Base Chance to hit. Payout scales moderately.
+
+📈 Crash & Towers
+Asset Optimization: Do not include external image assets or files for these two modules. Use pure canvas drawing methods (ctx.lineTo, ctx.arc, vector strokes) to draw the lines, text trackers, grids, and button states on the fly over a clean dark gray slate background.

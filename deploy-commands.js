@@ -176,6 +176,9 @@ commands.push({ name: 'stoprob', description: 'Stop an active robbery against yo
 commands.push({ name: 'forfeit', description: 'Forfeit your current duel or isail battle' });
 commands.push({ name: 'collection', description: 'View your card collection' });
 
+// casino gamble command
+commands.push({ name: 'gamble', description: "Visit Sir Crocodile's Casino for a chance to win Beli" });
+
 // timers command
 commands.push({ name: 'timers', description: 'View global stock and pull reset timers' });
 

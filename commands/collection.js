@@ -123,6 +123,15 @@ function makeNavRow(userId, index, total, cardDef, owned) {
     );
   }
 
+  if (cardDef && cardDef.character === 'Nami') {
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`nami_ability:${cardDef.id}`)
+        .setLabel('Ability')
+        .setStyle(ButtonStyle.Secondary)
+    );
+  }
+
   return row;
 }
 

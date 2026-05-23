@@ -84,6 +84,8 @@ const UserSchema = new Schema({
   totalVotes: { type: Number, default: 0 },
   // fishing stats
   totalFishCaught: { type: Number, default: 0 },
+  // casino gamble cooldown (1 hour after any game)
+  gambleCooldownUntil: { type: Date, default: null },
 });
 
 module.exports = mongoose.model('User', UserSchema);
