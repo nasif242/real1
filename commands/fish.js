@@ -346,13 +346,19 @@ module.exports = {
 
         const targetCard = cards.find(c => c.id === targetCardId);
         const emoji = targetCard.emoji || '<:artifact:1492550000000000000>';
-        lootLines.push(`${emoji} ${targetCard.character} (U${targetMastery})`);
 
         const existing = user.ownedCards.find(c => c.cardId === targetCardId);
         if (existing) {
-          existing.level = Math.max(existing.level, 1);
+          existing.xp = (existing.xp || 0) + 100;
+          const levelsGained = Math.floor(existing.xp / 100);
+          if (levelsGained > 0) {
+            existing.level = (existing.level || 1) + levelsGained;
+            existing.xp = existing.xp % 100;
+          }
+          lootLines.push(`${emoji} ${targetCard.character} *(duplicate → +100 XP)*`);
         } else {
           user.ownedCards.push({ cardId: targetCardId, level: 1, xp: 0 });
+          lootLines.push(`${emoji} ${targetCard.character}`);
         }
       }
     } else {

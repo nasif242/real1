@@ -631,9 +631,11 @@ module.exports = {
         .setStyle(ButtonStyle.Primary)
     )];
 
-    // Attach generated image for the next card page when artifact.
-    // Always pass an explicit files array so Discord clears any previous
-    // artifact attachment when navigating to a non-artifact card.
+    // Defer first so we can do async image generation and a proper message
+    // edit that clears old attachments (interaction.update() in Discord.js v14
+    // does not support the attachments field, but Message.edit() does).
+    try { await interaction.deferUpdate(); } catch (e) {}
+
     let files = [];
     try {
       const nextCard = pulledCards[nextIndex] && pulledCards[nextIndex].card;
@@ -644,6 +646,9 @@ module.exports = {
     } catch (e) {
       console.error('Failed to generate artifact image for open update', e);
     }
-    await interaction.update({ embeds: [embed], components: row, files, attachments: [] });
+
+    // Message.edit() properly clears previous artifact attachments when
+    // showing a non-artifact card by passing attachments: [].
+    await interaction.message.edit({ embeds: [embed], components: row, files, attachments: [] });
   }
 };
