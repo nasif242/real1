@@ -21,6 +21,75 @@ let currentStock = [];
 let lastStockReset = Date.now();
 let lastPullReset = Date.now();
 let globalClient = null;
+const SUPPORT_GUILD_ID = '1322627413234155520';
+
+async function syncSupportServerMembers() {
+  const User = require('../models/User');
+  if (!globalClient) {
+    console.log('[stock] syncSupportServerMembers: client not set, skipping support-server sync');
+    return;
+  }
+
+  try {
+    const guild = await globalClient.guilds.fetch(SUPPORT_GUILD_ID).catch(() => null);
+    if (!guild) {
+      console.log(`[stock] syncSupportServerMembers: support guild ${SUPPORT_GUILD_ID} not found. Clearing support flags.`);
+      await User.updateMany({}, { supportServerMember: false }).catch(() => {});
+      return;
+    }
+
+    const users = await User.find({}, 'userId supportServerMember').lean();
+    if (!users || users.length === 0) return;
+
+    const updates = [];
+    const batchSize = 10;
+    for (let i = 0; i < users.length; i += batchSize) {
+      const batch = users.slice(i, i + batchSize);
+      const promises = batch.map(async (u) => {
+        try {
+          const member = await guild.members.fetch(u.userId).catch(() => null);
+          const isMember = !!member;
+          if (u.supportServerMember !== isMember) return { userId: u.userId, isMember };
+          return null;
+        } catch (err) {
+          return null;
+        }
+      });
+      const results = await Promise.all(promises);
+      for (const r of results) if (r) updates.push(r);
+      if (i + batchSize < users.length) await new Promise(r => setTimeout(r, 800));
+    }
+
+    if (updates.length > 0) {
+      const bulkOps = updates.map(u => ({ updateOne: { filter: { userId: u.userId }, update: { $set: { supportServerMember: u.isMember } } } }));
+      await User.bulkWrite(bulkOps, { ordered: false }).catch(() => {});
+      console.log(`[stock] Synced support server membership for ${updates.length} users`);
+    } else {
+      console.log('[stock] Support server membership already up-to-date');
+    }
+    // If we just discovered users who are support members but haven't had their bonus applied this cycle,
+    // apply the bonus now (increment pullsRemaining by 1 up to PULL_LIMIT+1 and mark supportBonusApplied true).
+    try {
+      const { PULL_LIMIT } = require('../config');
+      const lastResetBoundary = getPreviousPullResetDate();
+      const pending = await User.find({ supportServerMember: true, supportBonusApplied: { $ne: true }, lastReset: { $gte: lastResetBoundary } });
+      if (pending && pending.length > 0) {
+        const grantOps = pending.map(u => {
+          const eff = PULL_LIMIT + 1;
+          const current = typeof u.pullsRemaining === 'number' && isFinite(u.pullsRemaining) ? Math.floor(u.pullsRemaining) : 0;
+          const newVal = Math.min(current + 1, eff);
+          return { updateOne: { filter: { userId: u.userId }, update: { $set: { pullsRemaining: newVal, supportBonusApplied: true } } } };
+        });
+        if (grantOps.length > 0) await User.bulkWrite(grantOps, { ordered: false }).catch(() => {});
+        console.log(`[stock] Applied support bonus to ${grantOps.length} users discovered during sync.`);
+      }
+    } catch (errApply) {
+      console.error('Error applying support bonuses during sync:', errApply);
+    }
+  } catch (err) {
+    console.error('Error syncing support server members:', err);
+  }
+}
 
 
 // decrement stock count for crew name, return false if insufficient
@@ -107,7 +176,10 @@ async function resetPullCounter() {
   const { PULL_LIMIT } = require('../config');
   
   try {
-    await User.updateMany({}, { pullsRemaining: PULL_LIMIT, supportBonusApplied: false });
+    // Honor supportServerMember: members get one extra pull and have their bonus marked applied
+    const lastResetBoundary = getPreviousPullResetDate();
+    await User.updateMany({ supportServerMember: true }, { $set: { pullsRemaining: PULL_LIMIT + 1, supportBonusApplied: true, lastReset: lastResetBoundary } });
+    await User.updateMany({ supportServerMember: { $ne: true } }, { $set: { pullsRemaining: PULL_LIMIT, supportBonusApplied: false, lastReset: lastResetBoundary } });
     console.log('Pulls reset');
     // If a client is set and a reset notification channel is configured, post a message
     try {
@@ -132,6 +204,14 @@ async function resetPullCounter() {
 
 function setClient(c) {
   globalClient = c;
+  // Kick off a background sync of support-server membership for all users
+  (async () => {
+    try {
+      await syncSupportServerMembers();
+    } catch (e) {
+      console.error('Error during support-server membership sync:', e);
+    }
+  })();
 }
 
 function getNextStockResetDate() {

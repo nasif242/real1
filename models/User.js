@@ -15,6 +15,7 @@ const UserSchema = new Schema({
   pullsRemaining: { type: Number, default: 7 },
   lastReset: { type: Date, default: Date.now },
   supportBonusApplied: { type: Boolean, default: false },
+  supportServerMember: { type: Boolean, default: false },
   pityCount: { type: Number, default: 0 },
   ownedCards: { type: [UserCardSchema], default: [] },
   history: { type: [String], default: [] },

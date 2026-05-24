@@ -21,10 +21,25 @@ module.exports = {
     // Give the starter (first pullable card in dataset)
     const starter = cards.find(c => c.pullable);
     const basicRod = rods.find(r => r.id === 'basic_rod');
+    // detect support-server membership at account creation
+    const client = message ? message.client : interaction.client;
+    let inSupportServer = false;
+    try {
+      const SUPPORT_GUILD_ID = '1322627413234155520';
+      const guild = client ? (client.guilds.cache.get(SUPPORT_GUILD_ID) || await client.guilds.fetch(SUPPORT_GUILD_ID).catch(() => null)) : null;
+      if (guild) {
+        const member = await guild.members.fetch(userId).catch(() => null);
+        inSupportServer = !!member;
+      }
+    } catch (e) {
+      inSupportServer = false;
+    }
+
     user = new User({
       userId,
-      pullsRemaining: PULL_LIMIT,
+      pullsRemaining: inSupportServer ? PULL_LIMIT + 1 : PULL_LIMIT,
       lastReset: new Date(),
+      supportServerMember: inSupportServer,
       pityCount: 0,
       ownedCards: starter ? [{ cardId: starter.id, level: 1, xp: 0 }] : [],
       history: starter ? [starter.id] : [],

@@ -65,8 +65,8 @@ module.exports = {
       user.lootCooldownUntil = null;
       user.betCooldownUntil = null;
       user.activeBountyTarget = null;
-      // reset pulls for this user
-      user.pullsRemaining = PULL_LIMIT || 7;
+      // reset pulls for this user (honor support server membership)
+      user.pullsRemaining = (user.supportServerMember ? (PULL_LIMIT + 1) : PULL_LIMIT) || 7;
       user.lastReset = new Date();
       await user.save();
 
@@ -103,7 +103,7 @@ module.exports = {
 
       // Use token directly
       user.resetTokens -= 1;
-      user.pullsRemaining = PULL_LIMIT || 7;
+      user.pullsRemaining = (user.supportServerMember ? (PULL_LIMIT + 1) : PULL_LIMIT) || 7;
       user.gems = (user.gems || 0) + 1;
       user.lastReset = new Date();
       await user.save();
@@ -191,7 +191,7 @@ module.exports = {
       }
 
       user.resetTokens -= 1;
-      user.pullsRemaining = PULL_LIMIT || 7;
+      user.pullsRemaining = (user.supportServerMember ? (PULL_LIMIT + 1) : PULL_LIMIT) || 7;
       user.gems = (user.gems || 0) + 1;
       user.lastReset = new Date();
       await user.save();
