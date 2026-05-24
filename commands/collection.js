@@ -123,7 +123,8 @@ function makeNavRow(userId, index, total, cardDef, owned) {
     );
   }
 
-  if (cardDef && cardDef.character === 'Nami') {
+  const ABILITY_CARD_IDS = ['4162', '4037', '3786'];
+  if (cardDef && (cardDef.character === 'Nami' || ABILITY_CARD_IDS.includes(cardDef.id))) {
     row.addComponents(
       new ButtonBuilder()
         .setCustomId(`nami_ability:${cardDef.id}`)

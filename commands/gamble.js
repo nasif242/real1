@@ -1570,9 +1570,39 @@ async function handleScratchButton(interaction, session, tileIndex) {
 // NAMI ABILITY BUTTON
 // ────────────────────────────────────────────
 
+const PULL_ABILITY_CARD_IDS = ['4162', '4037', '3786'];
+
 async function handleNamiAbilityButton(interaction, cardId) {
   const cardDef = cards.find(c => c.id === cardId);
-  if (!cardDef || cardDef.character !== 'Nami') {
+  if (!cardDef) {
+    return interaction.reply({ content: 'Unknown card.', ephemeral: true });
+  }
+
+  // Handle special pull bonus cards
+  if (PULL_ABILITY_CARD_IDS.includes(cardId)) {
+    const user = await User.findOne({ userId: interaction.user.id });
+    if (!user) return interaction.reply({ content: 'You don\'t have an account.', ephemeral: true });
+    const { getMaxStarForRank } = require('../utils/starLevel');
+    const maxStar = getMaxStarForRank(cardDef.rank);
+    const owned = user.ownedCards.find(e => e.cardId === cardId);
+    const starLevel = owned ? (owned.starLevel || 0) : null;
+    const isMaxed = owned && starLevel >= maxStar;
+    let statusLine = '';
+    if (!owned) {
+      statusLine = `\nYou don't own this card yet.`;
+    } else if (isMaxed) {
+      statusLine = `\nCurrent: Max ★ — **+1 pull per reset is active!**`;
+    } else {
+      statusLine = `\nCurrent: ${starLevel} ✮ — upgrade to Max ★ (${maxStar} ✮) to unlock.`;
+    }
+    return interaction.reply({
+      content: `This card unlocks +1 pull per reset when upgraded to Max ★ level.\nex.\nMax ★ = +1 pull per reset${statusLine}`,
+      ephemeral: true
+    });
+  }
+
+  // Handle Nami gambling boost
+  if (cardDef.character !== 'Nami') {
     return interaction.reply({ content: 'Unknown card.', ephemeral: true });
   }
   const user = await User.findOne({ userId: interaction.user.id });
@@ -1581,7 +1611,7 @@ async function handleNamiAbilityButton(interaction, cardId) {
   const owned = user.ownedCards.find(e => e.cardId === cardId);
   if (!owned) {
     return interaction.reply({
-      content: 'Nami boosts the Beli you receive from gambling depending on her star level.\n\nExample:\n1 ✮ = 1% beli boost',
+      content: 'Nami boosts the Beli you receive from gambling depending on her star level.\nex.\n1 ✮ = 1% beli boost',
       ephemeral: true
     });
   }
@@ -1591,7 +1621,7 @@ async function handleNamiAbilityButton(interaction, cardId) {
   const pct = (starLevel * 1);
   const activation = starLevel === 0 ? ' — reach ★1 to activate!' : '.';
   return interaction.reply({
-    content: `Nami boosts the Beli you receive from gambling depending on her star level.\n\nExample:\n1 ✮ = 1% beli boost\n\nCurrent: ${starLevel} ✮ = ${pct}% boost (×${mult})${activation}`,
+    content: `Nami boosts the Beli you receive from gambling depending on her star level.\nex.\n1 ✮ = 1% beli boost\n\nCurrent: ${starLevel} ✮ = ${pct}% boost (×${mult})${activation}`,
     ephemeral: true
   });
 }

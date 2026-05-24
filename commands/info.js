@@ -78,7 +78,8 @@ function makeInfoRow(index, total, cardDef, isOwned) {
     );
   }
 
-  if (cardDef && cardDef.character === 'Nami') {
+  const ABILITY_CARD_IDS = ['4162', '4037', '3786'];
+  if (cardDef && (cardDef.character === 'Nami' || ABILITY_CARD_IDS.includes(cardDef.id))) {
     components.push(
       new ButtonBuilder()
         .setCustomId(`nami_ability:${cardDef.id}`)
