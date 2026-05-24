@@ -45,29 +45,58 @@ const categories = {
   }
 };
 
-async function buildCrewLeaderboardEmbed() {
+async function buildCrewLeaderboardImage(userId) {
   const allCrews = await Crew.find({});
   if (!allCrews.length) {
-    return new EmbedBuilder()
-      .setTitle('🏆  Crew Leaderboard')
-      .setColor('#FFD700')
-      .setDescription('No crews have been created yet.');
+    return null;
   }
+
   const ranked = await Promise.all(allCrews.map(async crew => {
     const memberUsers = await User.find({ userId: { $in: crew.members } }, 'bounty');
     const totalBounty = memberUsers.reduce((sum, u) => sum + (u.bounty ?? 100), 0);
     return { crew, totalBounty };
   }));
   ranked.sort((a, b) => b.totalBounty - a.totalBounty);
-  const medals = ['🥇', '🥈', '🥉'];
-  const lines = ranked.slice(0, 10).map(({ crew, totalBounty }, i) => {
-    const pos = medals[i] || `**${i + 1}.**`;
-    return `${pos} **${crew.name}** — ${totalBounty.toLocaleString()} bounty · ${crew.members.length} members`;
-  });
-  return new EmbedBuilder()
-    .setTitle('🏆  Crew Leaderboard')
-    .setColor('#FFD700')
-    .setDescription(lines.join('\n'));
+
+  const userCrew = await Crew.findOne({ members: userId });
+  const userCrewData = userCrew
+    ? ranked.find(r => r.crew.crewId === userCrew.crewId)
+    : null;
+  const currentRank = userCrewData ? ranked.indexOf(userCrewData) + 1 : ranked.length + 1;
+  const currentBounty = userCrewData ? userCrewData.totalBounty : 0;
+  const currentCrewName = userCrew ? userCrew.name : 'No Crew';
+
+  const aboveBounty = currentRank > 1 ? ranked[currentRank - 2].totalBounty : currentBounty;
+  const belowBounty = currentRank > 0 && currentRank < ranked.length ? ranked[currentRank].totalBounty : currentBounty;
+  const surpassAmount = currentRank > 1 ? Math.max(0, aboveBounty - currentBounty) : 0;
+  const range = Math.max(1, aboveBounty - belowBounty);
+  const closeness = currentRank > 1 && currentRank < ranked.length
+    ? Math.min(1, Math.max(0, (currentBounty - belowBounty) / range))
+    : (currentRank === 1 ? 1 : 0);
+
+  const topCrews = ranked.slice(0, 10).map(({ crew, totalBounty }) => ({
+    userId: crew.crewId,
+    username: crew.name,
+    value: `${totalBounty.toLocaleString()} bounty`
+  }));
+
+  const imagePayload = {
+    leaderboardName: 'Global Leaderboard - Crews',
+    categoryName: 'Crews',
+    topUsers: topCrews,
+    currentUser: {
+      userId: userCrew ? userCrew.crewId : null,
+      username: currentCrewName,
+      avatarUrl: null
+    },
+    currentRank,
+    currentValue: `${currentBounty.toLocaleString()} bounty`,
+    surpassAmount,
+    totalPlayers: ranked.length,
+    closeness
+  };
+
+  return imagePayload;
 }
 
 function resolveCategory({ message, interaction, args }) {
@@ -159,10 +188,15 @@ async function sendLeaderboardReply({ categoryKey, allUsers, userId, client, cha
   const row = buildSelectRow(categoryKey);
 
   if (config.isCrew) {
-    const embed = await buildCrewLeaderboardEmbed();
-    if (message) return channel.send({ embeds: [embed], components: [row] });
     if (!interaction.deferred && !interaction.replied) await interaction.deferReply();
-    return interaction.editReply({ embeds: [embed], components: [row], fetchReply: true });
+    const imagePayload = await buildCrewLeaderboardImage(userId);
+    if (!imagePayload) {
+      return interaction.editReply({ content: 'No crews have been created yet.', components: [row], fetchReply: true });
+    }
+    const imageBuffer = await generateLeaderboardImage(imagePayload);
+    const attachment = new AttachmentBuilder(imageBuffer, { name: 'leaderboard.png' });
+    if (message) return channel.send({ files: [attachment], components: [row] });
+    return interaction.editReply({ files: [attachment], components: [row], fetchReply: true });
   }
 
   const { imagePayload } = await buildLeaderboardPayload({ allUsers, categoryKey, userId, client });
@@ -200,8 +234,14 @@ module.exports = {
       try {
         let updatePayload;
         if (nextConfig.isCrew) {
-          const embed = await buildCrewLeaderboardEmbed();
-          updatePayload = { embeds: [embed], files: [], components: [nextRow] };
+          const crewImagePayload = await buildCrewLeaderboardImage(userId);
+          if (!crewImagePayload) {
+            updatePayload = { embeds: [], files: [], content: 'No crews have been created yet.', components: [nextRow] };
+          } else {
+            const crewBuf = await generateLeaderboardImage(crewImagePayload);
+            const crewAtt = new AttachmentBuilder(crewBuf, { name: 'leaderboard.png' });
+            updatePayload = { embeds: [], files: [crewAtt], components: [nextRow] };
+          }
         } else {
           const { imagePayload: nextPayload } = await buildLeaderboardPayload({ allUsers, categoryKey: selected, userId, client });
           const nextImageBuffer = await generateLeaderboardImage(nextPayload);

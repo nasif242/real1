@@ -97,8 +97,7 @@ const COMMAND_CATEGORIES = {
       { name: 'crew color <#hex>', desc: 'Set the crew embed colour (captain only)' },
       { name: 'crew jolly <url>', desc: 'Set the crew jolly roger image (captain only)' },
       { name: 'crew leave', desc: 'Leave your current crew' },
-      { name: 'crew disband', desc: 'Disband your crew (captain only)' },
-      { name: 'leaderboard crew', desc: 'View top crews by total bounty (part of leaderboard)' }
+      { name: 'crew disband', desc: 'Disband your crew (captain only)' }
     ]
   }
 };

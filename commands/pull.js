@@ -5,7 +5,7 @@ const { buildPullEmbed, getAllCardVersions, getCardById, pickFromPoolWithWishlis
 const stockUtils = require('../src/stock');
 const getPreviousPullResetDate = stockUtils.getPreviousPullResetDate;
 const getTimeUntilNextPullReset = stockUtils.getTimeUntilNextPullReset;
-const { AttachmentBuilder } = require('discord.js');
+const { AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { generateArtifactImage } = require('../utils/artifactImage');
 const SUPPORT_GUILD_ID = '1322627413234155520';
 const { getMaxStarForRank } = require('../utils/starLevel');
@@ -135,19 +135,17 @@ module.exports = {
       }
 
       // Build reply
-      let reply = `you've used all ${effectivePullLimit} pulls. Next reset in ${timeStr}`;
-      const wantLines = [];
-      if (showVote) wantLines.push(`${nextEmoji} [Vote](<https://top.gg/bot/1461800991677481173/vote>) for the bot for ${resetTokenEmoji}Reset token`);
-      if (showSupport) wantLines.push(`${nextEmoji} Join the [Support server](https://discord.gg/z8bDjhYZE5) for 1 Extra pull per reset`);
-      if (cardLines.length > 0) {
-        wantLines.push('__Obtain these cards and upgrade them to Max star level for 1 extra pull each.__');
-        wantLines.push(...cardLines);
-      }
+      const reply = `you've used all ${effectivePullLimit} pulls. Next reset in **${timeStr}**`;
 
-      if (wantLines.length > 0) reply += `\n\n**Want more pulls?**\n` + wantLines.join('\n');
+      const morePullsRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('pull_more_info')
+          .setLabel('Get More Pulls')
+          .setStyle(ButtonStyle.Secondary)
+      );
 
-      if (message) return message.channel.send(reply);
-      return interaction.reply({ content: reply, ephemeral: true });
+      if (message) return message.channel.send({ content: reply, components: [morePullsRow] });
+      return interaction.reply({ content: reply, ephemeral: true, components: [morePullsRow] });
     }
 
     // determine category first (Cards / Artifacts / Ships) then roll rank per-category
@@ -350,5 +348,62 @@ module.exports = {
 
     if (message) return message.channel.send({ embeds: [embed], files });
     return interaction.reply({ embeds: [embed], files });
+  },
+
+  async handleButton(interaction) {
+    const userId = interaction.user.id;
+    const user = await User.findOne({ userId });
+    if (!user) return interaction.reply({ content: "You don't have an account yet.", ephemeral: true });
+
+    const { PULL_LIMIT, PULL_RESET_HOURS } = require('../config');
+    const { getMaxStarForRank } = require('../utils/starLevel');
+    const { cards } = require('../data/cards');
+
+    let extrasFromCards = 0;
+    const owned = user.ownedCards || [];
+    for (const cid of SPECIAL_PULL_CARD_IDS) {
+      const entry = owned.find(e => e.cardId === cid);
+      if (entry) {
+        const def = cards.find(c => c.id === cid);
+        const maxStar = def ? getMaxStarForRank(def.rank) : 7;
+        if ((entry.starLevel || 0) >= maxStar) extrasFromCards += 1;
+      }
+    }
+    const effectivePullLimit = PULL_LIMIT + (user.supportBonusApplied ? 1 : 0) + extrasFromCards;
+
+    const nextEmoji = '<:next:1489374606916714706>';
+    const resetTokenEmoji = '<:resettoken:1490738386540171445>';
+
+    const VOTE_COOLDOWN_MS = 12 * 60 * 60 * 1000;
+    const lastVoted = user.lastVoted ? new Date(user.lastVoted).getTime() : 0;
+    const canVoteNow = !user.lastVoted || (Date.now() - lastVoted) >= VOTE_COOLDOWN_MS;
+    const showVote = canVoteNow;
+    const showSupport = !user.supportBonusApplied;
+
+    const specialCards = SPECIAL_PULL_CARD_IDS.map(id => cards.find(c => c.id === id)).filter(Boolean);
+    const cardLines = [];
+    for (const c of specialCards) {
+      const ownedEntry = (user.ownedCards || []).find(e => e.cardId === c.id);
+      const maxStar = getMaxStarForRank(c.rank);
+      const isMax = ownedEntry && (ownedEntry.starLevel || 0) >= maxStar;
+      if (!isMax) {
+        const emoji = c.emoji ? c.emoji + ' ' : '';
+        cardLines.push(`${nextEmoji} ${emoji}${c.character} \`${c.id}\``);
+      }
+    }
+
+    const wantLines = [];
+    if (showVote) wantLines.push(`${nextEmoji} [Vote](<https://top.gg/bot/1461800991677481173/vote>) for the bot for ${resetTokenEmoji}Reset token`);
+    if (showSupport) wantLines.push(`${nextEmoji} Join the [Support server](https://discord.gg/z8bDjhYZE5) for 1 Extra pull per reset`);
+    if (cardLines.length > 0) {
+      wantLines.push('__Obtain these cards and upgrade them to Max star level for 1 extra pull each.__');
+      wantLines.push(...cardLines);
+    }
+
+    const content = wantLines.length > 0
+      ? `**Want more pulls?**\n${wantLines.join('\n')}`
+      : 'You currently have no extra ways to gain more pulls available.';
+
+    return interaction.reply({ content, ephemeral: true });
   }
 };

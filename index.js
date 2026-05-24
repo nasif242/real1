@@ -404,6 +404,10 @@ async function main() {
           return await require('./commands/fish').handleCatch(interaction, cardId);
         }
 
+        if (action === 'pull_more_info') {
+          return await pullCmd.handleButton(interaction);
+        }
+
         // handle duel interactions
         if (action && action.startsWith('duel')) {
           return await duelCmd.handleButton(interaction, action, cardId);

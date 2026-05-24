@@ -22,6 +22,17 @@ function isValidUrl(str) {
   return /^https?:\/\/.+/.test(str);
 }
 
+function isValidImageUrl(str) {
+  if (!isValidUrl(str)) return false;
+  try {
+    const url = new URL(str);
+    const pathname = url.pathname.toLowerCase();
+    return /\.(png|jpg|jpeg|gif|webp)(\?|$)/.test(pathname) || isValidUrl(str);
+  } catch {
+    return false;
+  }
+}
+
 async function getCrewForUser(userId) {
   return Crew.findOne({ members: userId });
 }
@@ -202,7 +213,7 @@ module.exports = {
     if (sub === 'jolly') {
       const url = interaction ? interaction.options.getString('url') : (args?.[1] || '');
       if (!url || !isValidUrl(url)) {
-        const content = 'Please provide a valid image URL starting with `https://`.';
+        const content = 'Please provide a valid image or GIF URL starting with `https://`.';
         if (message) return message.reply(content);
         return interaction.reply({ content, ephemeral: true });
       }
