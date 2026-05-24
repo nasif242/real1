@@ -22,6 +22,20 @@ function isValidUrl(str) {
   return /^https?:\/\/.+/.test(str);
 }
 
+async function resolveTenorUrl(url) {
+  if (!/^https?:\/\/(www\.)?tenor\.com\//i.test(url)) return url;
+  try {
+    const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    const html = await res.text();
+    const match = html.match(/<meta[^>]+property="og:image"[^>]+content="([^"]+)"/i)
+      || html.match(/<meta[^>]+content="([^"]+)"[^>]+property="og:image"/i);
+    if (match && match[1]) return match[1];
+  } catch {
+    // fall through and return original url
+  }
+  return url;
+}
+
 function isValidImageUrl(str) {
   if (!isValidUrl(str)) return false;
   try {
@@ -86,7 +100,9 @@ async function buildCrewEmbed(crew, client) {
     viceCaptainId = vc.userId;
   }
 
-  const crewMembers = crew.members.filter(id => id !== crew.captainId && id !== viceCaptainId);
+  const crewMembers = crew.members
+    .filter(id => id !== crew.captainId && id !== viceCaptainId)
+    .sort((a, b) => (rankMap[a] || Infinity) - (rankMap[b] || Infinity));
 
   const rankTag = id => rankMap[id] ? ` (#${rankMap[id]})` : '';
 
@@ -253,7 +269,7 @@ module.exports = {
         if (message) return message.reply(content);
         return interaction.reply({ content, ephemeral: true });
       }
-      crew.jollyRoger = url;
+      crew.jollyRoger = await resolveTenorUrl(url);
       await crew.save();
       const embed = await buildCrewEmbed(crew, client);
       if (message) return message.reply({ content: 'Jolly roger updated.', embeds: [embed] });
@@ -532,7 +548,7 @@ module.exports = {
     }
 
     const color = (rawColor && isValidHex(rawColor)) ? rawColor : '#2b2d31';
-    const jollyRoger = (rawJolly && isValidUrl(rawJolly)) ? rawJolly : null;
+    const jollyRoger = (rawJolly && isValidUrl(rawJolly)) ? await resolveTenorUrl(rawJolly) : null;
 
     const crew = await Crew.create({
       crewId: genCrewId(),

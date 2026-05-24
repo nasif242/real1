@@ -348,32 +348,32 @@ module.exports = {
   },
 
   async handleButton(interaction, action, token) {
+    // Defer immediately so Discord doesn't time out during DB operations
+    await interaction.deferUpdate().catch(() => {});
+
     const session = pendingBulkSell.get(token);
     if (!session) {
-      return interaction.reply({ content: 'That sell confirmation has expired.', ephemeral: true });
+      return interaction.editReply({ content: 'That sell confirmation has expired.', embeds: [], components: [] }).catch(() => {});
     }
     if (interaction.user.id !== session.userId) {
-      return interaction.reply({ content: 'Only the original user can confirm this sell.', ephemeral: true });
+      return interaction.followUp({ content: 'Only the original user can confirm this sell.', ephemeral: true }).catch(() => {});
     }
 
     if (action === 'no') {
       pendingBulkSell.delete(token);
-      if (global && typeof global.safeUpdate === 'function') return global.safeUpdate(interaction, { content: 'Bulk sell cancelled.', embeds: [], components: [] });
-      return global.safeUpdate(interaction, { content: 'Bulk sell cancelled.', embeds: [], components: [] });
+      return interaction.editReply({ content: 'Bulk sell cancelled.', embeds: [], components: [] }).catch(() => {});
     }
 
     const user = await User.findOne({ userId: session.userId });
     if (!user) {
       pendingBulkSell.delete(token);
-      if (global && typeof global.safeUpdate === 'function') return global.safeUpdate(interaction, { content: 'Your account could not be found.', embeds: [], components: [] });
-      return global.safeUpdate(interaction, { content: 'Your account could not be found.', embeds: [], components: [] });
+      return interaction.editReply({ content: 'Your account could not be found.', embeds: [], components: [] }).catch(() => {});
     }
 
     const plan = buildSellPlan(user, session.requests);
     if (!plan.actions.length) {
       pendingBulkSell.delete(token);
-      if (global && typeof global.safeUpdate === 'function') return global.safeUpdate(interaction, { content: 'Nothing could be sold. Your inventory may have changed.', embeds: [], components: [] });
-      return global.safeUpdate(interaction, { content: 'Nothing could be sold. Your inventory may have changed.', embeds: [], components: [] });
+      return interaction.editReply({ content: 'Nothing could be sold. Your inventory may have changed.', embeds: [], components: [] }).catch(() => {});
     }
 
     const result = await performSell(user, plan.actions);
@@ -389,7 +389,6 @@ module.exports = {
     if (result.soldLines.length > soldDisplayLimit) soldLinesDisplay.push(`and ${result.soldLines.length - soldDisplayLimit}x more...`);
     embed.setDescription(`Sold ${result.soldLines.length} item(s) for **${result.total}** ¥.\n\n${soldLinesDisplay.join('\n')}`);
 
-    if (global && typeof global.safeUpdate === 'function') return global.safeUpdate(interaction, { embeds: [embed], components: [] });
-    return global.safeUpdate(interaction, { embeds: [embed], components: [] });
+    return interaction.editReply({ embeds: [embed], components: [] }).catch(() => {});
   }
 };
