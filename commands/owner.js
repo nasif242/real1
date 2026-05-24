@@ -286,16 +286,7 @@ async function execute({ message, args }) {
         return message.reply(`Given ${amtParsed} reset token(s) to <@${targetId}>`);
       }
 
-      if (type === 'vote') {
-        const voteMention = args[2];
-        const voteTargetId = parseMention(voteMention);
-        if (!voteTargetId) return message.reply('Usage: op owner give vote <@user>');
-        const { processVote } = require('../src/voteWebhook');
-        await processVote(voteTargetId);
-        return message.reply(`Manually processed 1 vote for <@${voteTargetId}> (totalVotes + streak incremented, rewards given).`);
-      }
-
-      return message.reply('Unknown give type; valid types are beli, gems, resettoken, card, pack, vote');
+      return message.reply('Unknown give type; valid types are beli, gems, resettoken, card, pack');
     }
 
   if (sub === 'remove') {

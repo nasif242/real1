@@ -7,18 +7,25 @@ const getPreviousPullResetDate = stockUtils.getPreviousPullResetDate;
 const getTimeUntilNextPullReset = stockUtils.getTimeUntilNextPullReset;
 const { AttachmentBuilder } = require('discord.js');
 const { generateArtifactImage } = require('../utils/artifactImage');
-const { REST, Routes } = require('@discordjs/rest');
-
 const SUPPORT_GUILD_ID = '1322627413234155520';
 
-async function isInSupportServer(userId) {
+async function isInSupportServer(userId, client) {
   try {
-    const token = process.env.DISCORD_TOKEN || process.env.TOKEN;
-    if (!token) return false;
-    const rest = new REST({ version: '10' }).setToken(token);
-    await rest.get(Routes.guildMember(SUPPORT_GUILD_ID, userId));
-    return true;
+    const guild = client.guilds.cache.get(SUPPORT_GUILD_ID);
+    if (!guild) {
+      console.log(`[pull] isInSupportServer: bot is NOT in guild ${SUPPORT_GUILD_ID} (not in cache). Cannot check membership.`);
+      return false;
+    }
+    // fetch single member — does not require privileged GUILD_MEMBERS intent
+    const member = await guild.members.fetch(userId);
+    console.log(`[pull] isInSupportServer: user ${userId} IS in support server.`);
+    return !!member;
   } catch (e) {
+    if (e.code === 10007) {
+      console.log(`[pull] isInSupportServer: user ${userId} is NOT in support server (Unknown Member).`);
+    } else {
+      console.error(`[pull] isInSupportServer: unexpected error for user ${userId}:`, e.code, e.message);
+    }
     return false;
   }
 }
@@ -46,7 +53,8 @@ module.exports = {
     }
 
     // Check if user is in the support server for an extra pull
-    const inSupportServer = await isInSupportServer(userId);
+    const client = message ? message.client : interaction.client;
+    const inSupportServer = await isInSupportServer(userId, client);
     const effectivePullLimit = inSupportServer ? PULL_LIMIT + 1 : PULL_LIMIT;
 
     const lastResetBoundary = getPreviousPullResetDate();

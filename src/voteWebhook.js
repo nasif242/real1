@@ -187,4 +187,4 @@ function startVoteWebhook() {
   });
 }
 
-module.exports = { startVoteWebhook, setClient, processVote };
+module.exports = { startVoteWebhook, setClient };
