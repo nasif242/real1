@@ -4,6 +4,12 @@ const { cards } = require('../data/cards');
 const { getCardById, findBestOwnedCard, formatCardId } = require('../utils/cards');
 const { getMaxStarForRank, getMaxLevelForRank, getStarUpgradeRequirement, buildStarDisplay } = require('../utils/starLevel');
 
+const SPECIAL_PULL_CARD_IDS = ['4162', '4037', '3786'];
+
+function hasMaxStarAbility(cardId) {
+  return SPECIAL_PULL_CARD_IDS.includes(cardId);
+}
+
 const GEM_EMOJI = '<:gem:1490741488081043577>';
 const SHARD_EMOJI_MAP = {
   red_shard: '<:RedShard:1494106374492131439>',
@@ -88,7 +94,11 @@ function buildUpgradeEmbed(cardDef, ownedEntry, user, username, avatarUrl) {
   ];
 
   if (requirement && nextStar <= maxStar) {
-    lines.push(`**Next Star:** ${nextStar} — ${STAR_PERKS[nextStar] || '+1% All Stats'}`);
+    let perkText = STAR_PERKS[nextStar] || '+1% All Stats';
+    if (nextStar === maxStar && hasMaxStarAbility(cardDef.id)) {
+      perkText += ' + **Ability Unlocked: +1 Pull per Reset**';
+    }
+    lines.push(`**Next Star:** ${nextStar} — ${perkText}`);
     lines.push(`**Required Level:** ${requirement.level}`);
     lines.push(`**Gem Cost:** 1 Gem`);
     lines.push(`**Shard Cost:** ${requirement.shardCost} ${cardDef.attribute} Shards`);
@@ -240,6 +250,13 @@ module.exports = {
 
     ownedEntry.starLevel = nextStar;
 
+    // Special pull ability: if this card reaches max star, immediately grant +1 pull
+    let abilityUnlocked = false;
+    if (nextStar === maxStar && hasMaxStarAbility(cardDef.id)) {
+      user.pullsRemaining = (user.pullsRemaining || 0) + 1;
+      abilityUnlocked = true;
+    }
+
     // Star 6: give this card's signature artifact (artifact whose boost targets this character)
     let artifactLine = '';
     if (nextStar === 6) {
@@ -271,12 +288,15 @@ module.exports = {
 
     const starDisplay = buildStarDisplay(cardDef.attribute, nextStar, cardDef.rank);
 
+    let perkText = STAR_PERKS[nextStar] || '+1% All Stats';
+    if (abilityUnlocked) perkText += '\n**Ability Unlocked:** +1 Pull per Reset';
+
     const descParts = [
       `**${cardDef.emoji || ''} ${cardDef.character}** reached **Star ${nextStar}**!`,
       '',
       starDisplay,
       '',
-      `**Perk Unlocked:** ${STAR_PERKS[nextStar] || '+1% All Stats'}`,
+      `**Perks Unlocked:** ${perkText}`,
     ];
     if (artifactLine) descParts.push('', artifactLine);
     const _shardEmoji = SHARD_EMOJI_MAP[shardItemId] || '';

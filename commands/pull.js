@@ -140,11 +140,11 @@ module.exports = {
       if (showVote) wantLines.push(`${nextEmoji} [Vote](<https://top.gg/bot/1461800991677481173/vote>) for the bot for ${resetTokenEmoji}Reset token`);
       if (showSupport) wantLines.push(`${nextEmoji} Join the [Support server](https://discord.gg/z8bDjhYZE5) for 1 Extra pull per reset`);
       if (cardLines.length > 0) {
-        wantLines.push('Obtain these cards and upgrade them to Max star level for 1 extra pull each.');
+        wantLines.push('__Obtain these cards and upgrade them to Max star level for 1 extra pull each.__');
         wantLines.push(...cardLines);
       }
 
-      if (wantLines.length > 0) reply += `\n\nWant more pulls?\n` + wantLines.join('\n');
+      if (wantLines.length > 0) reply += `\n\n**Want more pulls?**\n` + wantLines.join('\n');
 
       if (message) return message.channel.send(reply);
       return interaction.reply({ content: reply, ephemeral: true });

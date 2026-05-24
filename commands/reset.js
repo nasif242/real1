@@ -2,6 +2,24 @@ const User = require('../models/User');
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { PULL_LIMIT } = require('../config');
 const stockModule = require('../src/stock');
+const { cards } = require('../data/cards');
+const { getMaxStarForRank } = require('../utils/starLevel');
+
+const SPECIAL_PULL_CARD_IDS = ['4162', '4037', '3786'];
+
+function getCardExtras(user) {
+  let extras = 0;
+  const owned = user.ownedCards || [];
+  for (const cid of SPECIAL_PULL_CARD_IDS) {
+    const entry = owned.find(e => e.cardId === cid);
+    if (entry) {
+      const def = cards.find(c => c.id === cid);
+      const maxStar = def ? getMaxStarForRank(def.rank) : 7;
+      if ((entry.starLevel || 0) >= maxStar) extras += 1;
+    }
+  }
+  return extras;
+}
 
 function findItemCount(items, itemId) {
   if (!Array.isArray(items)) return 0;
@@ -65,8 +83,8 @@ module.exports = {
       user.lootCooldownUntil = null;
       user.betCooldownUntil = null;
       user.activeBountyTarget = null;
-      // reset pulls for this user (honor support server membership)
-      user.pullsRemaining = (user.supportServerMember ? (PULL_LIMIT + 1) : PULL_LIMIT) || 7;
+      // reset pulls for this user (honor support server membership + special card bonuses)
+      user.pullsRemaining = PULL_LIMIT + (user.supportServerMember ? 1 : 0) + getCardExtras(user);
       user.lastReset = new Date();
       await user.save();
 
@@ -103,7 +121,7 @@ module.exports = {
 
       // Use token directly
       user.resetTokens -= 1;
-      user.pullsRemaining = (user.supportServerMember ? (PULL_LIMIT + 1) : PULL_LIMIT) || 7;
+      user.pullsRemaining = PULL_LIMIT + (user.supportServerMember ? 1 : 0) + getCardExtras(user);
       user.gems = (user.gems || 0) + 1;
       user.lastReset = new Date();
       await user.save();
@@ -191,7 +209,7 @@ module.exports = {
       }
 
       user.resetTokens -= 1;
-      user.pullsRemaining = (user.supportServerMember ? (PULL_LIMIT + 1) : PULL_LIMIT) || 7;
+      user.pullsRemaining = PULL_LIMIT + (user.supportServerMember ? 1 : 0) + getCardExtras(user);
       user.gems = (user.gems || 0) + 1;
       user.lastReset = new Date();
       await user.save();
