@@ -1,5 +1,6 @@
-const { ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ComponentType } = require('discord.js');
+const { ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ComponentType, EmbedBuilder } = require('discord.js');
 const User = require('../models/User');
+const Crew = require('../models/Crew');
 const { generateLeaderboardImage } = require('../utils/leaderboardImage');
 
 const categories = {
@@ -37,8 +38,37 @@ const categories = {
     sort: (a, b) => (b.totalVotes || 0) - (a.totalVotes || 0),
     valueFn: (user) => user.totalVotes || 0,
     format: (value) => `${value.toLocaleString()} total votes`
+  },
+  crews: {
+    label: 'Crews',
+    isCrew: true
   }
 };
+
+async function buildCrewLeaderboardEmbed() {
+  const allCrews = await Crew.find({});
+  if (!allCrews.length) {
+    return new EmbedBuilder()
+      .setTitle('🏆  Crew Leaderboard')
+      .setColor('#FFD700')
+      .setDescription('No crews have been created yet.');
+  }
+  const ranked = await Promise.all(allCrews.map(async crew => {
+    const memberUsers = await User.find({ userId: { $in: crew.members } }, 'bounty');
+    const totalBounty = memberUsers.reduce((sum, u) => sum + (u.bounty ?? 100), 0);
+    return { crew, totalBounty };
+  }));
+  ranked.sort((a, b) => b.totalBounty - a.totalBounty);
+  const medals = ['🥇', '🥈', '🥉'];
+  const lines = ranked.slice(0, 10).map(({ crew, totalBounty }, i) => {
+    const pos = medals[i] || `**${i + 1}.**`;
+    return `${pos} **${crew.name}** — ${totalBounty.toLocaleString()} bounty · ${crew.members.length} members`;
+  });
+  return new EmbedBuilder()
+    .setTitle('🏆  Crew Leaderboard')
+    .setColor('#FFD700')
+    .setDescription(lines.join('\n'));
+}
 
 function resolveCategory({ message, interaction, args }) {
   const requested = interaction?.options?.getString?.('category')?.toLowerCase() || (args?.[0] || '').toLowerCase();
@@ -49,6 +79,7 @@ function resolveCategory({ message, interaction, args }) {
   if (requested.startsWith('d')) return 'dex';
   if (requested.startsWith('f')) return 'fishers';
   if (requested.startsWith('v')) return 'voters';
+  if (requested.startsWith('c')) return 'crews';
   return 'wealth';
 }
 
@@ -123,6 +154,25 @@ function buildSelectRow(selectedCategory) {
   );
 }
 
+async function sendLeaderboardReply({ categoryKey, allUsers, userId, client, channel, message, interaction }) {
+  const config = categories[categoryKey];
+  const row = buildSelectRow(categoryKey);
+
+  if (config.isCrew) {
+    const embed = await buildCrewLeaderboardEmbed();
+    if (message) return channel.send({ embeds: [embed], components: [row] });
+    if (!interaction.deferred && !interaction.replied) await interaction.deferReply();
+    return interaction.editReply({ embeds: [embed], components: [row], fetchReply: true });
+  }
+
+  const { imagePayload } = await buildLeaderboardPayload({ allUsers, categoryKey, userId, client });
+  const imageBuffer = await generateLeaderboardImage(imagePayload);
+  const attachment = new AttachmentBuilder(imageBuffer, { name: 'leaderboard.png' });
+  if (message) return channel.send({ files: [attachment], components: [row] });
+  if (!interaction.deferred && !interaction.replied) await interaction.deferReply();
+  return interaction.editReply({ files: [attachment], components: [row], fetchReply: true });
+}
+
 module.exports = {
   name: 'leaderboard',
   description: 'View global leaderboards',
@@ -133,21 +183,7 @@ module.exports = {
     const categoryKey = resolveCategory({ message, interaction, args });
 
     const allUsers = await User.find({});
-    const { imagePayload } = await buildLeaderboardPayload({ allUsers, categoryKey, userId, client });
-    const imageBuffer = await generateLeaderboardImage(imagePayload);
-    const attachment = new AttachmentBuilder(imageBuffer, { name: 'leaderboard.png' });
-    const row = buildSelectRow(categoryKey);
-
-    let sentMessage;
-    if (message) {
-      sentMessage = await channel.send({ files: [attachment], components: [row] });
-    } else {
-      if (!interaction.deferred && !interaction.replied) {
-        await interaction.deferReply();
-      }
-
-      sentMessage = await interaction.editReply({ files: [attachment], components: [row], fetchReply: true });
-    }
+    const sentMessage = await sendLeaderboardReply({ categoryKey, allUsers, userId, client, channel, message, interaction });
 
     const collector = sentMessage.createMessageComponentCollector({ componentType: ComponentType.StringSelect, time: 90000 });
 
@@ -155,28 +191,30 @@ module.exports = {
       if (selectInteraction.user.id !== userId) {
         return selectInteraction.reply({ content: 'You can\'t use this menu.', ephemeral: true });
       }
-
       const selected = selectInteraction.values?.[0];
       if (!categories[selected]) {
         return selectInteraction.reply({ content: 'Invalid category selected.', ephemeral: true });
       }
-
-      const { imagePayload: nextPayload } = await buildLeaderboardPayload({ allUsers, categoryKey: selected, userId, client });
-      const nextImageBuffer = await generateLeaderboardImage(nextPayload);
-      const nextAttachment = new AttachmentBuilder(nextImageBuffer, { name: 'leaderboard.png' });
       const nextRow = buildSelectRow(selected);
-
+      const nextConfig = categories[selected];
       try {
-        if (global && typeof global.safeUpdate === 'function') {
-          await global.safeUpdate(selectInteraction, { files: [nextAttachment], components: [nextRow] });
+        let updatePayload;
+        if (nextConfig.isCrew) {
+          const embed = await buildCrewLeaderboardEmbed();
+          updatePayload = { embeds: [embed], files: [], components: [nextRow] };
         } else {
-          await selectInteraction.update({ files: [nextAttachment], components: [nextRow] });
+          const { imagePayload: nextPayload } = await buildLeaderboardPayload({ allUsers, categoryKey: selected, userId, client });
+          const nextImageBuffer = await generateLeaderboardImage(nextPayload);
+          const nextAttachment = new AttachmentBuilder(nextImageBuffer, { name: 'leaderboard.png' });
+          updatePayload = { embeds: [], files: [nextAttachment], components: [nextRow] };
+        }
+        if (global && typeof global.safeUpdate === 'function') {
+          await global.safeUpdate(selectInteraction, updatePayload);
+        } else {
+          await selectInteraction.update(updatePayload);
         }
       } catch (e) {
-        // Ignore expired/unknown interaction errors (10062). Log others.
-        if (!(e && e.code === 10062)) {
-          console.error('Failed to update leaderboard select interaction:', e);
-        }
+        if (!(e && e.code === 10062)) console.error('Failed to update leaderboard select interaction:', e);
         try { await selectInteraction.reply({ content: 'Unable to update selection (interaction expired).', ephemeral: true }); } catch (e2) {}
       }
     });
@@ -190,7 +228,7 @@ module.exports = {
           .addOptions(Object.entries(categories).map(([key, config]) => ({
             label: config.label,
             value: key,
-            description: `Sort by ${config.label}`,
+            description: config.isCrew ? 'Top crews by bounty' : `Sort by ${config.label}`,
             default: key === categoryKey
           })))
       );

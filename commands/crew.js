@@ -121,7 +121,7 @@ module.exports = {
     } else {
       const firstArg = (args?.[0] || '').toLowerCase();
       sub = firstArg || 'view';
-      if (sub === 'lb') sub = 'leaderboard';
+      if (sub === 'colour') sub = 'color';
       targetUser = message.mentions.users.first() || null;
     }
 
@@ -367,36 +367,6 @@ module.exports = {
       return message.reply(`**${crew.name}** has been disbanded.`);
     }
 
-    // ── LEADERBOARD ───────────────────────────────────────────────────────────
-    if (sub === 'leaderboard') {
-      const allCrews = await Crew.find({});
-      if (!allCrews.length) {
-        const content = 'No crews have been created yet.';
-        if (message) return message.reply(content);
-        return interaction.reply({ content, ephemeral: true });
-      }
-
-      const ranked = await Promise.all(allCrews.map(async crew => {
-        const { totalBounty } = await computeCrewStats(crew);
-        return { crew, totalBounty };
-      }));
-      ranked.sort((a, b) => b.totalBounty - a.totalBounty);
-      const top = ranked.slice(0, 10);
-
-      const medals = ['🥇', '🥈', '🥉'];
-      const lines = top.map(({ crew, totalBounty }, i) => {
-        const pos = medals[i] || `**${i + 1}.**`;
-        return `${pos} **${crew.name}** — ${totalBounty.toLocaleString()} bounty · ${crew.members.length} members`;
-      });
-
-      const embed = new EmbedBuilder()
-        .setTitle('🏆  Crew Leaderboard')
-        .setColor('#FFD700')
-        .setDescription(lines.join('\n'));
-
-      if (message) return message.reply({ embeds: [embed] });
-      return interaction.reply({ embeds: [embed] });
-    }
   },
 
   // ─── Button Handler ────────────────────────────────────────────────────────

@@ -124,7 +124,8 @@ commands.push({
       choices: [
         { name: 'Wealth', value: 'wealth' },
         { name: 'Bounty', value: 'bounty' },
-        { name: 'Dex', value: 'dex' }
+        { name: 'Dex', value: 'dex' },
+        { name: 'Crews', value: 'crews' }
       ]
     }
   ]
@@ -229,9 +230,8 @@ commands.push({
       description: 'Set the crew jolly roger image (captain only)',
       options: [{ name: 'url', type: 3, description: 'Image URL for the jolly roger', required: true }]
     },
-    { name: 'leave',       type: 1, description: 'Leave your current crew' },
-    { name: 'disband',     type: 1, description: 'Disband your crew (captain only)' },
-    { name: 'leaderboard', type: 1, description: 'View top crews by total bounty' }
+    { name: 'leave',   type: 1, description: 'Leave your current crew' },
+    { name: 'disband', type: 1, description: 'Disband your crew (captain only)' }
   ]
 });
 
