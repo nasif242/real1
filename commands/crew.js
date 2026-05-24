@@ -275,11 +275,20 @@ module.exports = {
         if (message) return message.reply(content);
         return interaction.reply({ content, ephemeral: true });
       }
-      crew.members.push(targetUser.id);
-      await crew.save();
-      const content = `**${targetUser.username}** has been added to **${crew.name}**.`;
-      if (message) return message.reply(content);
-      return interaction.reply({ content });
+      const captainName = message ? message.author.username : interaction.user.username;
+      const inviteContent = `**${captainName}** is inviting you to join **${crew.name}**. Do you want to join?`;
+      const inviteRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`crew_invite_yes:${crew.crewId}:${targetUser.id}`)
+          .setLabel('Yes')
+          .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+          .setCustomId(`crew_invite_no:${crew.crewId}:${targetUser.id}`)
+          .setLabel('No')
+          .setStyle(ButtonStyle.Secondary)
+      );
+      if (message) return message.reply({ content: inviteContent, components: [inviteRow] });
+      return interaction.reply({ content: inviteContent, components: [inviteRow] });
     }
 
     // ── REMOVE ────────────────────────────────────────────────────────────────
@@ -310,9 +319,16 @@ module.exports = {
         if (message) return message.reply(content);
         return interaction.reply({ content, ephemeral: true });
       }
+      const removedName = targetUser.username;
+      const crewName = crew.name;
       crew.members = crew.members.filter(id => id !== targetUser.id);
       await crew.save();
-      const content = `**${targetUser.username}** has been removed from **${crew.name}**.`;
+
+      try {
+        await targetUser.send(`You have been removed from **${crewName}**.`);
+      } catch {}
+
+      const content = `**${removedName}** has been removed from **${crewName}**.`;
       if (message) return message.reply(content);
       return interaction.reply({ content });
     }
@@ -433,6 +449,38 @@ module.exports = {
 
     if (action === 'crew_disband_cancel') {
       return interaction.update({ content: 'Disband cancelled.', components: [] });
+    }
+
+    if (action === 'crew_invite_yes') {
+      const [, crewId, invitedUserId] = customId.split(':');
+      if (interaction.user.id !== invitedUserId) {
+        return interaction.reply({ content: 'This invite is not for you.', ephemeral: true });
+      }
+      const crew = await Crew.findOne({ crewId });
+      if (!crew) {
+        return interaction.update({ content: 'This crew no longer exists.', components: [] });
+      }
+      if (crew.members.includes(invitedUserId)) {
+        return interaction.update({ content: "You're already in this crew.", components: [] });
+      }
+      const alreadyInCrew = await getCrewForUser(invitedUserId);
+      if (alreadyInCrew) {
+        return interaction.update({ content: "You're already in another crew.", components: [] });
+      }
+      if (crew.members.length >= CREW_CAP) {
+        return interaction.update({ content: `**${crew.name}** is full (${CREW_CAP} members max).`, components: [] });
+      }
+      crew.members.push(invitedUserId);
+      await crew.save();
+      return interaction.update({ content: `You've joined **${crew.name}**!`, components: [] });
+    }
+
+    if (action === 'crew_invite_no') {
+      const [, crewId, invitedUserId] = customId.split(':');
+      if (interaction.user.id !== invitedUserId) {
+        return interaction.reply({ content: 'This invite is not for you.', ephemeral: true });
+      }
+      return interaction.update({ content: 'Invite declined.', components: [] });
     }
   },
 

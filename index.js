@@ -513,7 +513,7 @@ async function main() {
         }
 
         // handle crew buttons
-        if (action && (action === 'crew_create_btn' || action.startsWith('crew_disband'))) {
+        if (action && (action === 'crew_create_btn' || action.startsWith('crew_disband') || action.startsWith('crew_invite'))) {
           return crewCmd.handleButton(interaction, interaction.customId);
         }
       }
