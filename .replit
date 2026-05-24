@@ -42,6 +42,8 @@ args = "git push -u https://d7D5T:r8DHf9i6KPj4@justrunmy.app/git/a27057_Ds62 HEA
 
 [userenv.shared]
 OWNER_ID = "1257718161298690119"
+DISCORD_TOKEN = "MTQzMTM3MjYyNDM2NTM1NTE0MA.GrGQY-.H4sL1rgLzB-cZPdTzSb-Db-w0jB7WHwNYWEiw8"
+MONGODB_URI = "mongodb+srv://nasif:Islam21346894@cluster0.ocvuxu0.mongodb.net/?appName=Cluster0"
 
 [deployment]
 deploymentTarget = "cloudrun"

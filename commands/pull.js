@@ -30,9 +30,21 @@ module.exports = {
       user.lastReset = now;
     }
 
+    // Check if user is in the support server for an extra pull
+    const SUPPORT_GUILD_ID = '1322627413234155520';
+    let effectivePullLimit = PULL_LIMIT;
+    try {
+      const client = message ? message.client : interaction.client;
+      const supportGuild = client.guilds.cache.get(SUPPORT_GUILD_ID);
+      if (supportGuild) {
+        const member = await supportGuild.members.fetch(userId).catch(() => null);
+        if (member) effectivePullLimit = PULL_LIMIT + 1;
+      }
+    } catch (e) {}
+
     const lastResetBoundary = getPreviousPullResetDate();
     if (user.lastReset < lastResetBoundary) {
-      user.pullsRemaining = PULL_LIMIT;
+      user.pullsRemaining = effectivePullLimit;
       user.lastReset = lastResetBoundary;
       await user.save(); // Save immediately to avoid race conditions
     }
@@ -43,7 +55,9 @@ module.exports = {
       const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
       const secs = Math.floor((diffMs % (1000 * 60)) / 1000);
       const timeStr = `${hrs}h ${mins}m ${secs}s`;
-      const reply = `you've used all ${PULL_LIMIT} pulls. Next reset in \`${timeStr}\``;
+      const nextEmoji = '<:next:1489374606916714706>';
+      const resetTokenEmoji = '<:resettoken:1490738386540171445>';
+      const reply = `you've used all ${effectivePullLimit} pulls. Next reset in \`${timeStr}\`\n\n**Want more pulls?**\n${nextEmoji} [Vote](https://top.gg/bot/1461800991677481173/vote) for the bot for ${resetTokenEmoji}Reset token\n${nextEmoji} Join the [Support server](https://discord.gg/z8bDjhYZE5) for 1 Extra pull per reset\nhttps://discord.gg/z8bDjhYZE5`;
       if (message) return message.channel.send(reply);
       return interaction.reply({ content: reply, ephemeral: true });
     }

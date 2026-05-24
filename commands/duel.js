@@ -403,6 +403,12 @@ function makeActionRow(state, isPlayer1Turn) {
         .setDisabled(isUndead)
     );
   }
+  row.addComponents(
+    new ButtonBuilder()
+      .setCustomId('duel_action:card_rest')
+      .setLabel('Rest')
+      .setStyle(ButtonStyle.Success)
+  );
   return row;
 }
 
@@ -499,11 +505,20 @@ function setupTimeout(state, msg) {
   if (!state.finished) {
     state.timeout = setTimeout(async () => {
       try {
-        // Check if duel state still exists with this message ID
         if (!duelStates.has(msg.id)) return;
         if (state.finished) return;
-        appendLog(state, `${state.turn === 'player1' ? state.discordUser1.username : state.discordUser2.username} took too long. Turn passed.`);
-        // Try to finalize, but handle case where message was deleted
+        const timedOutTeam = state.turn === 'player1' ? state.player1Cards : state.player2Cards;
+        const timedOutUsername = state.turn === 'player1' ? state.discordUser1.username : state.discordUser2.username;
+        // Apply team rest (5% heal) for the timed-out player
+        timedOutTeam.forEach(c => {
+          if (c.alive) {
+            c.currentHP = Math.min(c.maxHP || c.def.health, c.currentHP + Math.floor((c.maxHP || c.def.health) * 0.05));
+          }
+        });
+        const actionText = `${timedOutUsername} took too long — team rested for 5% HP!`;
+        if (state.turn === 'player1') state.lastP1Action = actionText;
+        else state.lastP2Action = actionText;
+        appendLog(state, `${timedOutUsername} took too long. Turn passed.`);
         try {
           await finalizeAction(state, msg, true);
         } catch (e) {
@@ -1447,15 +1462,14 @@ module.exports = {
         return interaction.reply({ content: 'The duel has already ended.', ephemeral: true });
       }
 
-      // Allow team Rest without a selected card (match isail behavior)
+      // Team Rest without a selected card — heals 5% HP only
       if (act === 'rest') {
         myTeam.forEach(c => {
           if (c.alive) {
-            c.currentHP = Math.min(c.maxHP || c.def.health, c.currentHP + Math.floor((c.maxHP || c.def.health) * 0.1));
-            c.energy = Math.min(3, c.energy + 2);
+            c.currentHP = Math.min(c.maxHP || c.def.health, c.currentHP + Math.floor((c.maxHP || c.def.health) * 0.05));
           }
         });
-        const actionText = `The team took a rest, healed 10% HP and restored +2 energy each!`;
+        const actionText = `The team took a rest and healed 5% HP!`;
         if (isPlayer1) state.lastP1Action = actionText;
         else state.lastP2Action = actionText;
         state.log = '';
@@ -1538,6 +1552,11 @@ module.exports = {
 
         // If we auto-selected multiple targets (e.g., scount:3 hitting all enemies), apply
         // per-target damage distributed across targets, then apply effects to the appropriate targets.
+        // Single alive opponent — auto-target them directly (no prompt needed)
+        if (!autoTargets && aliveOpponents.length === 1) {
+          autoTargets = aliveOpponents;
+        }
+
         if (autoTargets && autoTargets.length) {
           const targets = autoTargets;
           // divide base damage evenly across targets so the card's attack stat is split
@@ -1682,17 +1701,17 @@ module.exports = {
         }
         if (isPlayer1) state.lastP1Action = actionText;
         else state.lastP2Action = actionText;
-      } else if (act === 'rest') {
-        // Rest action: restore card's energy to 3, heal 15% of max HP, and clear freeze/hungry
+      } else if (act === 'card_rest') {
+        // Card-specific rest: heal 10% HP and replenish all energy
         card.energy = 3;
         card.turnsUntilRecharge = 2;
-        const healAmount = Math.ceil(card.maxHP * 0.15);
+        const healAmount = Math.ceil(card.maxHP * 0.10);
         card.currentHP = Math.min(card.maxHP, card.currentHP + healAmount);
         const removed = card.status?.some(st => st.type === 'freeze' || st.type === 'hungry');
         if (removed) {
           removeStatusTypes(card, ['freeze', 'hungry']);
         }
-        const actionText = `${card.def.character} took a rest, restored energy and healed for ${healAmount} HP${removed ? ', and recovered from freeze/hunger' : ''}!`;
+        const actionText = `${card.def.character} rested, healed ${healAmount} HP and restored full energy${removed ? ', and recovered from freeze/hunger' : ''}!`;
         if (isPlayer1) state.lastP1Action = actionText;
         else state.lastP2Action = actionText;
       }
