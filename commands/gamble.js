@@ -178,7 +178,29 @@ function crashCurrentMult(startTime) {
 const TOWER_PAYOUTS = [1.3, 1.7, 2.3, 3.2, 5.0];
 
 // Scratch prizes (will be scaled by bet/100)
-const SCRATCH_PRIZE_POOL = [100, 100, 200, 200, 500, 500, 1000, 0, 0];
+// Scratch multipliers (applied to bet): 0.25x min, 2.5x max, ~60% win chance
+const SCRATCH_MULTIPLIERS = [0.25, 0.5, 1.0, 1.5, 2.5];
+
+function buildScratchGrid(bet) {
+  const mults = SCRATCH_MULTIPLIERS;
+  let tiles;
+  if (Math.random() < 0.60) {
+    // Win round: guarantee at least a pair of one multiplier
+    const winIdx = Math.floor(Math.random() * mults.length);
+    const winVal = Math.round(mults[winIdx] * bet);
+    const isTriple = Math.random() < 0.25;
+    const copies = isTriple ? 3 : 2;
+    tiles = Array(copies).fill(winVal);
+    // Fill remaining slots with the other multipliers (one each), then zeros
+    mults.filter((_, i) => i !== winIdx).forEach(m => tiles.push(Math.round(m * bet)));
+    while (tiles.length < 9) tiles.push(0);
+  } else {
+    // Loss round: all 5 multipliers unique (no pair possible), rest zeros
+    tiles = mults.map(m => Math.round(m * bet));
+    while (tiles.length < 9) tiles.push(0);
+  }
+  return tiles.sort(() => Math.random() - 0.5);
+}
 
 const RED_NUMBERS = new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]);
 
@@ -1089,9 +1111,7 @@ async function startTowers(interaction, session) {
 }
 
 async function startScratch(interaction, session) {
-  const grid = [...SCRATCH_PRIZE_POOL]
-    .sort(() => Math.random() - 0.5)
-    .map(v => v > 0 ? Math.round(v * session.bet / 100) : 0);
+  const grid = buildScratchGrid(session.bet);
   session.state = { grid, revealed: [], phase: 'playing' };
   const buf = renderScratchCanvas(grid, []);
   const att = new AttachmentBuilder(buf, { name: 'scratch.png' });
@@ -1483,12 +1503,12 @@ async function handleScratchButton(interaction, session, tileIndex) {
   const att = new AttachmentBuilder(buf, { name: 'scratch.png' });
 
   if (allRevealed) {
-    // Tally winnings — 3-of-a-kind wins
+    // Tally winnings — pair pays tile value, triple pays tile value × 2
     const counts = {};
     for (const v of grid.filter(v => v > 0)) counts[v] = (counts[v] || 0) + 1;
     let bestPrize = 0;
     for (const [val, cnt] of Object.entries(counts)) {
-      if (cnt >= 3) bestPrize = Math.max(bestPrize, parseInt(val, 10) * 3);
+      if (cnt >= 3) bestPrize = Math.max(bestPrize, parseInt(val, 10) * 2);
       else if (cnt >= 2) bestPrize = Math.max(bestPrize, parseInt(val, 10));
     }
 

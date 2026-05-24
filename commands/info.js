@@ -418,7 +418,7 @@ function buildGodTokenEmbed(godTokenInfo, discordUser, user) {
     .setThumbnail('https://cdn.discordapp.com/emojis/1499957056650608753.png')
     .setDescription('A rare and powerful token that resets all personal cooldowns and pulls when used. One of the most valuable items in the game.')
     .addFields(
-      { name: 'Effect', value: 'Resets bounty, trivia, loot, bet cooldowns and restores your pull limit to maximum. All packs reset.', inline: false },
+      { name: 'Effect', value: 'Resets bounty, trivia, loot, bet cooldowns and restores your pull limit to maximum.', inline: false },
       { name: 'Shop Price', value: '<:beri:1490738445319016651> 2700', inline: true },
       { name: 'Owned', value: `**${ownedCount}x**`, inline: true },
     );

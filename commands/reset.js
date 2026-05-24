@@ -68,9 +68,6 @@ module.exports = {
       // reset pulls for this user
       user.pullsRemaining = PULL_LIMIT || 7;
       user.lastReset = new Date();
-      // reset pack purchase counts for this user
-      user.packInventory = {};
-      user.markModified('packInventory');
       await user.save();
 
       const reply = 'Successfully used a **God Token**! All cooldowns and pulls have been reset.';
