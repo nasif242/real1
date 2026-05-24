@@ -45,9 +45,8 @@ module.exports = {
 
     // Reset logic using global pull timer
     const now = new Date();
-    if (typeof user.pullsRemaining !== 'number' || isNaN(user.pullsRemaining)) {
-      user.pullsRemaining = PULL_LIMIT;
-    }
+
+    // Ensure lastReset is a Date
     if (!user.lastReset || !(user.lastReset instanceof Date)) {
       user.lastReset = now;
     }
@@ -56,6 +55,15 @@ module.exports = {
     const client = message ? message.client : interaction.client;
     const inSupportServer = await isInSupportServer(userId, client);
     const effectivePullLimit = inSupportServer ? PULL_LIMIT + 1 : PULL_LIMIT;
+
+    // Normalize pullsRemaining to a finite integer within [0, effectivePullLimit]
+    if (typeof user.pullsRemaining !== 'number' || !isFinite(user.pullsRemaining)) {
+      user.pullsRemaining = effectivePullLimit;
+    } else {
+      user.pullsRemaining = Math.floor(user.pullsRemaining);
+      if (user.pullsRemaining > effectivePullLimit) user.pullsRemaining = effectivePullLimit;
+      if (user.pullsRemaining < 0) user.pullsRemaining = 0;
+    }
 
     const lastResetBoundary = getPreviousPullResetDate();
     if (user.lastReset < lastResetBoundary) {

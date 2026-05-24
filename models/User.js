@@ -12,7 +12,7 @@ const UserCardSchema = new Schema({
 
 const UserSchema = new Schema({
   userId: { type: String, required: true, unique: true },
-  pullsRemaining: { type: Number, default: 8 },
+  pullsRemaining: { type: Number, default: 7 },
   lastReset: { type: Date, default: Date.now },
   pityCount: { type: Number, default: 0 },
   ownedCards: { type: [UserCardSchema], default: [] },
