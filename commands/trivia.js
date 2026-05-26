@@ -180,6 +180,10 @@ function clearTriviaTimeout(session) {
       clearTimeout(session.timeout);
       session.timeout = null;
     }
+    if (session.expiration) {
+      clearTimeout(session.expiration);
+      session.expiration = null;
+    }
   } catch (e) {
     // ignore
   }
@@ -195,6 +199,7 @@ async function startTriviaTimeout(session, interaction) {
       try {
         const user = await User.findOne({ userId: ownerId });
         if (user) await applySessionRewards(user, session);
+        try { clearTriviaTimeout(session); } catch (e) {}
         activeTriviaSessions.delete(ownerId);
         const timeoutEmbed = new EmbedBuilder()
           .setColor('#ff7070')
@@ -220,6 +225,31 @@ async function startTriviaTimeout(session, interaction) {
         console.error('Trivia timeout error', e);
       }
     }, 30000);
+
+    // Sliding TTL to ensure sessions do not remain forever (5 minutes)
+    try {
+      if (session.expiration) clearTimeout(session.expiration);
+    } catch (e) {}
+    session.expiration = setTimeout(() => {
+      try {
+        if (activeTriviaSessions.has(ownerId)) {
+          activeTriviaSessions.delete(ownerId);
+          if (session.timeout) {
+            clearTimeout(session.timeout);
+            session.timeout = null;
+          }
+          const expiredEmbed = new EmbedBuilder()
+            .setColor('#ff7070')
+            .setTitle('Trivia Session Expired')
+            .setDescription('No activity for 5 minutes. Your trivia session has been cleared and you can start again.');
+          if (session.interaction) {
+            try { session.interaction.editReply({ embeds: [expiredEmbed], components: [] }).catch(() => {}); } catch (e) {}
+          }
+        }
+      } catch (e) {
+        console.error('Trivia expiration error', e);
+      }
+    }, 5 * 60 * 1000);
   } catch (e) {
     console.error('Failed to start trivia timeout', e);
   }
@@ -345,6 +375,7 @@ module.exports = {
         if (user) {
           await applySessionRewards(user, session);
         }
+        try { clearTriviaTimeout(session); } catch (e) {}
         activeTriviaSessions.delete(ownerId);
 
         const summary = session.totalBeli || session.gems || session.aChestCount || session.bChestCount || session.cChestCount
@@ -375,6 +406,7 @@ module.exports = {
           await applySessionRewards(user, session);
         }
 
+        try { clearTriviaTimeout(session); } catch (e) {}
         activeTriviaSessions.delete(ownerId);
         if (global && typeof global.safeUpdate === 'function') return global.safeUpdate(interaction, { embeds: [feedbackEmbed], components: [] });
         return global.safeUpdate(interaction, { embeds: [feedbackEmbed], components: [] });
@@ -395,6 +427,7 @@ module.exports = {
 
       const nextQuestion = session.questions[session.currentIndex];
       if (!nextQuestion) {
+        try { clearTriviaTimeout(session); } catch (e) {}
         activeTriviaSessions.delete(ownerId);
         return interaction.reply({ content: 'Unable to load the next trivia question.', ephemeral: true });
       }

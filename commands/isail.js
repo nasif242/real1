@@ -320,34 +320,11 @@ function applyGlobalCut(state) {
 // send a fresh message and remove the old one to reset Discord interaction timer
 async function refreshBattleMessage(oldMsg, state, user, discordUser) {
   try {
-    await oldMsg.delete();
-  } catch {}
-  const embed = buildEmbed(state, user, discordUser);
-  const components = [makeSelectionRow(state)];
-  if (state.awaitingTarget) {
-    const targetRow = makeTargetRow(state);
-    if (targetRow) components.push(targetRow);
-  } else {
-    const actionRow = makeActionRow(state);
-    if (actionRow) components.push(actionRow);
+    await updateBattleMessage(oldMsg, state, user, discordUser);
+  } catch (e) {
+    console.error('refreshBattleMessage failed to delegate to updateBattleMessage', e);
   }
-  if (state.finished) {
-    components.forEach(r => r.components.forEach(b => b.setDisabled(true)));
-    if (state.victory) {
-        const nextIsailRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId('isail_next')
-          .setLabel('Next Stage')
-          .setEmoji('<:nextsail:1490397191125209119>')
-          .setStyle(ButtonStyle.Secondary)
-      );
-      components.push(nextIsailRow);
-    }
-  }
-  const newMsg = await oldMsg.channel.send({ embeds: [embed], components });
-  battleStates.delete(oldMsg.id);
-  battleStates.set(newMsg.id, state);
-  return newMsg;
+  return oldMsg;
 }
 
 function energyDisplay(energy) {
@@ -407,6 +384,14 @@ function getMarinesForLevel(stage, prevRanks = [], userId = null) {
     m.atk = newAtk;
     m.attack_min = newAtk;
     m.attack_max = newAtk;
+  });
+
+  // Apply HP scaling based on number of marines (Navy scaling):
+  // 1 enemy => 3x HP, 2 enemies => 2x HP, 3 enemies => 1x HP
+  const hpMultiplier = groupLen === 1 ? 3 : groupLen === 2 ? 2 : 1;
+  group.forEach(m => {
+    m.maxHP = Math.max(1, Math.floor((m.maxHP || 1) * hpMultiplier));
+    m.currentHP = typeof m.currentHP === 'number' ? m.currentHP : m.maxHP;
   });
 
   return group;

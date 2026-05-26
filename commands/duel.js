@@ -93,21 +93,12 @@ function applyGlobalCut(state) {
 
 // refresh the duel embed by deleting old message and sending a new one
 async function refreshDuelMessage(oldMsg, state) {
-  try { await oldMsg.delete(); } catch {}
-  const embed = buildEmbed(state);
-  const row = makeSelectionRow(state, state.turn === 'player1');
-  const components = [row];
-  if (state.awaitingTarget) {
-    const targetRow = makeTargetRow(state, state.turn === 'player1');
-    if (targetRow) components.push(targetRow);
+  try {
+    await updateDuelMessage(oldMsg, state);
+  } catch (e) {
+    console.error('refreshDuelMessage failed to delegate to updateDuelMessage', e);
   }
-  if (state.finished) {
-    components.forEach(r => r.components.forEach(b => b.setDisabled(true)));
-  }
-  const newMsg = await oldMsg.channel.send({ embeds: [embed], components });
-  duelStates.delete(oldMsg.id);
-  duelStates.set(newMsg.id, state);
-  return newMsg;
+  return oldMsg;
 }
 
 
@@ -442,11 +433,11 @@ function makeTargetRow(state, isPlayer1Turn) {
 async function updateDuelMessage(msg, state) {
   const embed = buildEmbed(state);
   const components = [];
-  
+
   const isPlayer1Turn = state.turn === 'player1';
   const s1Row = makeSelectionRow(state, isPlayer1Turn);
   if (s1Row) components.push(s1Row);
-  
+
   if (state.awaitingTarget) {
     const tRow = makeTargetRow(state, isPlayer1Turn);
     if (tRow) components.push(tRow);
@@ -457,19 +448,43 @@ async function updateDuelMessage(msg, state) {
 
   if (state.finished) {
     components.forEach(r => r.components.forEach(b => b.setDisabled(true)));
-    await msg.edit({ embeds: [embed], components });
+    try {
+      await msg.edit({ embeds: [embed], components });
+    } catch (e) {
+      // If the message is gone, attempt to send the final embed
+      try { await msg.channel.send({ embeds: [embed], components: [] }); } catch (err) {}
+    }
     clearDuelTimeout(state);
+    state._lastShownTurn = state.turn;
     return;
   }
 
-  // Send a new message each turn so players always see the latest embed.
-  // Disable buttons on the old message to prevent stale button clicks.
+  // Determine whether this update should replace the message (turn transition)
+  const lastShownTurn = typeof state._lastShownTurn !== 'undefined' ? state._lastShownTurn : null;
+  const shouldReplace = (lastShownTurn !== null && lastShownTurn !== state.turn && !state.awaitingTarget);
+
+  // If we should not replace, edit the existing message in-place (preserves component state)
+  if (!shouldReplace) {
+    try {
+      await msg.edit({ embeds: [embed], components });
+      state._lastShownTurn = state.turn;
+      state.lastMsg = msg;
+      setupTimeout(state, msg);
+      return;
+    } catch (e) {
+      // fallthrough to replace behavior
+      console.error('Failed to edit duel message in-place, will replace:', e);
+    }
+  }
+
+  // Replace the message to reset interaction timers when the turn has changed
   try { await msg.edit({ components: [] }); } catch (e) {}
   const newMsg = await msg.channel.send({ embeds: [embed], components });
   // Remap the duelStates entry to the new message ID
   duelStates.delete(msg.id);
   duelStates.set(newMsg.id, state);
   state.lastMsg = newMsg;
+  state._lastShownTurn = state.turn;
   setupTimeout(state, newMsg);
 }
 
@@ -564,11 +579,15 @@ async function finalizeAction(state, msg, timedOut = false, appliedCut = false) 
     let winnerUser = await User.findOne({ userId: winnerId });
     let loserUser = await User.findOne({ userId: loserId });
     let bountyGain = 0;
-    
+    let awardedBountyGain = 0; // actual awarded amount (subject to eligibility)
+
     if (winnerUser && loserUser) {
       const winnerBounty = winnerUser.bounty || 100;
       const loserBounty = loserUser.bounty || 100;
-      
+
+      // Only award bounty rewards when the loser's bounty is within ±50% of the winner's bounty
+      const rewardsEligibleByBounty = (loserBounty >= Math.floor(winnerBounty * 0.5) && loserBounty <= Math.ceil(winnerBounty * 1.5));
+
       // Calculate bounty gain based on the rules:
       // If Winner's Bounty >= Loser's Bounty: 0 Bounty gain
       // If Loser's Bounty > Winner's Bounty: Winner gains 3% of the Loser's bounty
@@ -580,11 +599,12 @@ async function finalizeAction(state, msg, timedOut = false, appliedCut = false) 
           bountyGain = Math.floor(loserBounty * 0.03);
         }
       }
-      
+
       if (bountyGain > 0) {
         const winnerAllowed = !state.rewardsAllowed || !!state.rewardsAllowed[winnerId];
-        if (winnerAllowed) {
-          winnerUser.bounty = (winnerUser.bounty || 100) + bountyGain;
+        if (winnerAllowed && rewardsEligibleByBounty) {
+          awardedBountyGain = bountyGain;
+          winnerUser.bounty = (winnerUser.bounty || 100) + awardedBountyGain;
           await winnerUser.save();
           try {
           } catch (err) {
@@ -593,7 +613,7 @@ async function finalizeAction(state, msg, timedOut = false, appliedCut = false) 
           // Deduct the same amount from the loser
           try {
             if (loserUser) {
-              loserUser.bounty = Math.max(0, (loserUser.bounty || 100) - bountyGain);
+              loserUser.bounty = Math.max(0, (loserUser.bounty || 100) - awardedBountyGain);
               await loserUser.save();
             }
           } catch (err) {
@@ -607,14 +627,18 @@ async function finalizeAction(state, msg, timedOut = false, appliedCut = false) 
     let xpGain = 0;
     let beliGain = 0;
     let bountyClaimed = 0;
+    let awardedBountyClaimed = 0;
     if (state.isBountyDuel && winnerId === state.bountyHunter) {
       const targetBounty = loserUser.bounty || 100;
       xpGain = 0;
-      // Bounty duel rewards are always granted regardless of daily duel limit
+      // Bounty duel rewards are granted only when target bounty is within ±50% of hunter's bounty
+      const winnerBounty = winnerUser ? (winnerUser.bounty || 100) : 100;
+      const rewardsEligibleByBounty_capture = (targetBounty >= Math.floor(winnerBounty * 0.5) && targetBounty <= Math.ceil(winnerBounty * 1.5));
       const winnerAllowed = true;
-      if (winnerAllowed) {
+      if (winnerAllowed && rewardsEligibleByBounty_capture) {
         // Award 5% (1/20) of the target's bounty to the hunter's bounty total
         const bountyGain = Math.floor(targetBounty * 0.05);
+        awardedBountyClaimed = bountyGain;
         winnerUser.bounty = (winnerUser.bounty || 100) + bountyGain;
         bountyClaimed = bountyGain;
         // Compute proportional beli reward
@@ -678,11 +702,11 @@ async function finalizeAction(state, msg, timedOut = false, appliedCut = false) 
     
     // Create victory embed with bounty information
     let description = `${winner.username} wins!`;
-    if (bountyGain > 0) {
-      description += `\n\nBounty Gained: **${formatAmount(bountyGain)}**`;
+    if (awardedBountyGain > 0) {
+      description += `\n\nBounty Gained: **${formatAmount(awardedBountyGain)}**`;
     }
-    if (bountyClaimed > 0) {
-      description += `\n\nBounty Claimed: **${formatAmount(bountyClaimed)}**`;
+    if (awardedBountyClaimed > 0) {
+      description += `\n\nBounty Claimed: **${formatAmount(awardedBountyClaimed)}**`;
     }
     if (beliGain > 0) {
       description += `\n\nBeli Earned: ¥**${formatAmount(beliGain)}**`;
@@ -728,12 +752,17 @@ async function finalizeAction(state, msg, timedOut = false, appliedCut = false) 
       let winnerUser = await User.findOne({ userId: winnerId });
       let loserUser = await User.findOne({ userId: loserId });
       let bountyGain = 0;
+      let awardedBountyGain = 0;
       let bountyClaimed = 0;
+      let awardedBountyClaimed = 0;
       let beliGain = 0;
 
       if (winnerUser && loserUser) {
         const winnerBounty = winnerUser.bounty || 100;
         const loserBounty = loserUser.bounty || 100;
+
+        // Eligibility check: only award when loser's bounty is within ±50% of winner's bounty
+        const rewardsEligibleByBounty = (loserBounty >= Math.floor(winnerBounty * 0.5) && loserBounty <= Math.ceil(winnerBounty * 1.5));
 
         // Calculate bounty gain based on the rules (non-bounty-capture case)
         if (loserBounty > winnerBounty) {
@@ -746,8 +775,9 @@ async function finalizeAction(state, msg, timedOut = false, appliedCut = false) 
 
         if (bountyGain > 0) {
           const winnerAllowed = !state.rewardsAllowed || !!state.rewardsAllowed[winnerId];
-          if (winnerAllowed) {
-            winnerUser.bounty = (winnerUser.bounty || 100) + bountyGain;
+          if (winnerAllowed && rewardsEligibleByBounty) {
+            awardedBountyGain = bountyGain;
+            winnerUser.bounty = (winnerUser.bounty || 100) + awardedBountyGain;
             await winnerUser.save();
             try {
             } catch (err) {
@@ -756,7 +786,7 @@ async function finalizeAction(state, msg, timedOut = false, appliedCut = false) 
             // Deduct the same amount from the loser
             try {
               if (loserUser) {
-                loserUser.bounty = Math.max(0, (loserUser.bounty || 100) - bountyGain);
+                loserUser.bounty = Math.max(0, (loserUser.bounty || 100) - awardedBountyGain);
                 await loserUser.save();
               }
             } catch (err) {
@@ -768,12 +798,15 @@ async function finalizeAction(state, msg, timedOut = false, appliedCut = false) 
         // Handle bounty duel where hunter captured their target
         if (state.isBountyDuel && winnerId === state.bountyHunter) {
           const targetBounty = loserUser.bounty || 100;
-          const bountyGain = Math.floor(targetBounty * 0.05);
-          bountyClaimed = bountyGain;
+          const winnerBountyLocal = winnerUser.bounty || 100;
+          const rewardsEligibleByBounty_capture = (targetBounty >= Math.floor(winnerBountyLocal * 0.5) && targetBounty <= Math.ceil(winnerBountyLocal * 1.5));
           const winnerAllowed = !state.rewardsAllowed || !!state.rewardsAllowed[winnerId];
-          if (winnerAllowed) {
+          if (winnerAllowed && rewardsEligibleByBounty_capture) {
+            const bountyGainCaptured = Math.floor(targetBounty * 0.05);
+            awardedBountyClaimed = bountyGainCaptured;
+            bountyClaimed = bountyGainCaptured;
             // Award 5% (1/20) of the target's bounty to the hunter's bounty
-            winnerUser.bounty = (winnerUser.bounty || 100) + bountyGain;
+            winnerUser.bounty = (winnerUser.bounty || 100) + bountyGainCaptured;
             // proportional beli reward
             const baseBeli = Math.ceil(targetBounty / 100000);
             beliGain = baseBeli * 2; // 2x reward for bounty claim
@@ -833,11 +866,11 @@ async function finalizeAction(state, msg, timedOut = false, appliedCut = false) 
 
       // Create victory embed with bounty information
       let description = `${winner.username} wins!`;
-      if (bountyGain > 0) {
-        description += `\n\nBounty Gained: **${formatAmount(bountyGain)}**`;
+      if (awardedBountyGain > 0) {
+        description += `\n\nBounty Gained: **${formatAmount(awardedBountyGain)}**`;
       }
-      if (bountyClaimed > 0) {
-        description += `\n\nBounty Claimed: **${formatAmount(bountyClaimed)}**`;
+      if (awardedBountyClaimed > 0) {
+        description += `\n\nBounty Claimed: **${formatAmount(awardedBountyClaimed)}**`;
       }
       if (beliGain > 0) {
         description += `\n\nBeli Earned: ¥**${formatAmount(beliGain)}**`;
