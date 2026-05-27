@@ -665,6 +665,7 @@ async function main() {
       if (cmd === 'favorites') return await favoritesCmd.execute({ message });
       if (cmd === 'help' || cmd === 'h') return await require('./commands/help').execute({ message });
       if (cmd === 'crew') return await crewCmd.execute({ message, args });
+      if (cmd === 'raid') return await raidCmd.execute({ message, args });
       if (cmd === 'ownerlist') return await require('./commands/owner').list({ message });
       if (cmd === 'owner') return await require('./commands/owner').execute({ message, args });
       if (cmd === 'market') return await marketCmd.execute({ message, args });
