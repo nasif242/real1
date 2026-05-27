@@ -27,11 +27,13 @@ const {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const raidStates   = new Map();
-const BELI_BY_RANK = { D: 100, C: 300, B: 700, A: 1200, S: 2000, SS: 2800, UR: 3500 };
-const RAID_TIMEOUT = 3 * 60 * 1000;
-const MAX_PLAYERS  = 10;
-const MIN_PLAYERS  = 3;
+const raidStates       = new Map();
+const BELI_BY_RANK     = { D: 100, C: 300, B: 700, A: 1200, S: 2000, SS: 2800, UR: 3500 };
+const RAID_TIMEOUT     = 3 * 60 * 1000;  // lobby auto-cancel
+const TURN_TIMEOUT_MS  = 30 * 1000;      // per-turn inactivity
+const INACT_TIMEOUT_MS = 60 * 1000;      // whole-raid inactivity → cancel
+const MAX_PLAYERS      = 10;
+const MIN_PLAYERS      = 3;
 
 const EMOJI = {
   godToken: '<:godtoken:1499957056650608753>',
@@ -211,6 +213,46 @@ function currentPlayer(state) {
   return uid ? state.players.find(p => p.userId === uid) : null;
 }
 
+// ─── Timer helpers ────────────────────────────────────────────────────────────
+
+function clearRaidTimers(state) {
+  if (state.turnTimeoutId)  { clearTimeout(state.turnTimeoutId);  state.turnTimeoutId  = null; }
+  if (state.inactTimeoutId) { clearTimeout(state.inactTimeoutId); state.inactTimeoutId = null; }
+}
+
+// Starts (or restarts) the per-turn 30 s timer. When it fires the current
+// player is auto-skipped (treated as a rest). The whole-raid 60 s inactivity
+// timer is NOT reset here — only real player actions reset that.
+function startTurnTimer(state) {
+  if (state.turnTimeoutId) { clearTimeout(state.turnTimeoutId); state.turnTimeoutId = null; }
+  if (state.finished || state.phase !== 'battle') return;
+
+  state.turnTimeoutId = setTimeout(async () => {
+    state.turnTimeoutId = null;
+    if (state.finished || state.phase !== 'battle') return;
+    const cp = currentPlayer(state);
+    if (!cp || !cp.card || !cp.card.alive) return;
+    // Auto-skip: give +1 energy (same as rest), log, advance
+    if (cp.card.turnsUntilRecharge > 0) { cp.card.turnsUntilRecharge = Math.max(0, cp.card.turnsUntilRecharge - 1); }
+    else { cp.card.energy = Math.min(3, (cp.card.energy || 0) + 1); }
+    state.lastAction = `⏱️ **${cp.username}** didn't respond — **${cp.card.displayDef.character}** auto-rested. ${energyBar(cp.card.energy)}`;
+    await advanceTurn(state);
+  }, TURN_TIMEOUT_MS);
+}
+
+// Starts (or restarts) the 60 s whole-raid inactivity timer.
+// Should be called whenever a real player action happens.
+function resetInactivityTimer(state) {
+  if (state.inactTimeoutId) { clearTimeout(state.inactTimeoutId); state.inactTimeoutId = null; }
+  if (state.finished || state.phase !== 'battle') return;
+
+  state.inactTimeoutId = setTimeout(async () => {
+    state.inactTimeoutId = null;
+    if (state.finished || state.phase !== 'battle') return;
+    await handleTimeout(state);
+  }, INACT_TIMEOUT_MS);
+}
+
 // ─── Embed builders ───────────────────────────────────────────────────────────
 
 function buildLobbyEmbed(state) {
@@ -360,6 +402,8 @@ async function sendTurnMessage(state) {
     if (content) payload.content = content;
     const msg = await state.channel.send(payload);
     state.battleMessageId = msg.id;
+    // Start per-turn 30 s countdown for the current player
+    startTurnTimer(state);
   } catch (e) {
     console.error('[raid] sendTurnMessage:', e);
   }
@@ -377,8 +421,10 @@ async function startRaidBattle(state) {
   } catch (_) {}
 
   rebuildRoundQueue(state);
-  state.lastAction     = '⚔️ The raid has begun! Players attack in order of speed.';
+  state.lastAction      = '⚔️ The raid has begun! Players attack in order of speed.';
   state.battleMessageId = null;
+  // Start the 60 s whole-raid inactivity watchdog
+  resetInactivityTimer(state);
   await sendTurnMessage(state);
 }
 
@@ -556,11 +602,31 @@ function executePlayerAttack(card, action, boss, allPlayerCards) {
   return { ok: true, dmg, eff, effectLogs, logs, victory };
 }
 
+// Build a simple result embed: white, boss thumbnail only (no image).
+function buildResultEmbed(state) {
+  const boss  = state.boss;
+  const embed = new EmbedBuilder().setColor('#FFFFFF');
+  const emojiId = getEmojiId(boss.emoji);
+  if (emojiId) embed.setThumbnail(`https://cdn.discordapp.com/emojis/${emojiId}.png`);
+  return embed;
+}
+
+async function sendResultEmbed(state, embed) {
+  try {
+    if (state.battleMessageId) {
+      const msg = await state.channel.messages.fetch(state.battleMessageId).catch(() => null);
+      if (msg) { await msg.edit({ content: null, embeds: [embed], components: [] }); return; }
+    }
+    await state.channel.send({ embeds: [embed] });
+  } catch (e) { console.error('[raid] sendResultEmbed:', e); }
+}
+
 async function handleVictory(state) {
   state.finished = true;
   state.phase    = 'finished';
+  clearRaidTimers(state);
 
-  const beli  = BELI_BY_RANK[state.boss.rank] || 100;
+  const beli   = BELI_BY_RANK[state.boss.rank] || 100;
   const cardId = state.boss.cardId;
   const lines  = [];
 
@@ -572,54 +638,57 @@ async function handleVictory(state) {
       const owned = user.ownedCards.find(e => e.cardId === cardId);
       if (!owned) {
         user.ownedCards.push({ cardId, level: 1, xp: 0, starLevel: 0 });
-        lines.push(`**${p.username}**: received **${state.boss.name}** card + **${beli.toLocaleString()} Beli**`);
+        lines.push(`- **${p.username}**: received **${state.boss.name}** card + **${beli.toLocaleString()} Beli**`);
       } else {
         const def   = getCardById(cardId);
         const maxLv = def ? (RANK_MAX_LEVEL[def.rank] || 10) : 10;
         const oldLv = owned.level || 1;
         owned.level = Math.min(maxLv, oldLv + 10);
         owned.xp    = 0;
-        lines.push(`**${p.username}**: ${state.boss.name} Lv. ${oldLv} → **${owned.level}** + **${beli.toLocaleString()} Beli**`);
+        lines.push(`- **${p.username}**: ${state.boss.name} Lv. ${oldLv} → **${owned.level}** + **${beli.toLocaleString()} Beli**`);
       }
       await user.save();
     } catch (e) { console.error('[raid] reward error:', e); }
   }
 
-  const embed = buildBattleEmbed(state);
-  embed.setTitle(`🏆 Victory! ${state.boss.name} defeated!`);
-  embed.setColor('#FFD700');
-  embed.addFields({ name: '🎁 Rewards', value: lines.join('\n') || 'No surviving players.', inline: false });
+  const rewardBlock = lines.join('\n') || '- No surviving players.';
+  const embed = buildResultEmbed(state)
+    .setTitle('**Victory!**')
+    .setDescription(
+      `The **${state.crewName}** Crew defeated **${state.boss.name}** and earned:\n\n${rewardBlock}`
+    );
 
-  try {
-    if (state.battleMessageId) {
-      const msg = await state.channel.messages.fetch(state.battleMessageId).catch(() => null);
-      if (msg) await msg.edit({ content: null, embeds: [embed], components: [] });
-    } else {
-      await state.channel.send({ embeds: [embed] });
-    }
-  } catch (e) { console.error('[raid] victory send:', e); }
-
+  await sendResultEmbed(state, embed);
   raidStates.delete(state.channelId);
 }
 
 async function handleDefeat(state) {
   state.finished = true;
   state.phase    = 'finished';
+  clearRaidTimers(state);
 
-  const embed = buildBattleEmbed(state);
-  embed.setTitle(`💀 Raid Failed! ${state.boss.name} was victorious!`);
-  embed.setColor('#000000');
-  embed.addFields({ name: 'Result', value: 'All player cards were KO\'d. Better luck next time!', inline: false });
+  const embed = buildResultEmbed(state)
+    .setTitle('**Raid Failed!**')
+    .setDescription(
+      `The **${state.crewName}** Crew was defeated by **${state.boss.name}**.\nAll cards were KO'd — better luck next time!`
+    );
 
-  try {
-    if (state.battleMessageId) {
-      const msg = await state.channel.messages.fetch(state.battleMessageId).catch(() => null);
-      if (msg) await msg.edit({ content: null, embeds: [embed], components: [] });
-    } else {
-      await state.channel.send({ embeds: [embed] });
-    }
-  } catch (e) { console.error('[raid] defeat send:', e); }
+  await sendResultEmbed(state, embed);
+  raidStates.delete(state.channelId);
+}
 
+async function handleTimeout(state) {
+  state.finished = true;
+  state.phase    = 'finished';
+  clearRaidTimers(state);
+
+  const embed = buildResultEmbed(state)
+    .setTitle('**Raid Timed Out!**')
+    .setDescription(
+      `The **${state.crewName}** Crew's raid against **${state.boss.name}** was abandoned due to inactivity.`
+    );
+
+  await sendResultEmbed(state, embed);
   raidStates.delete(state.channelId);
 }
 
@@ -689,6 +758,7 @@ async function execBoss(ctx, bossQuery) {
     phase: 'lobby', boss, players: [],
     roundQueue: [], roundIndex: 0,
     finished: false, lastAction: '', startTimeoutId: null,
+    turnTimeoutId: null, inactTimeoutId: null,
   };
 
   raidStates.set(channelId, state);
@@ -708,14 +778,17 @@ async function execBoss(ctx, bossQuery) {
     if (!s || s.phase !== 'lobby') return;
     if (s.players.length < MIN_PLAYERS) {
       try {
+        const emojiId = getEmojiId(s.boss.emoji);
+        const ce = new EmbedBuilder()
+          .setColor('#FFFFFF')
+          .setTitle('**Raid Cancelled**')
+          .setDescription(
+            `Not enough players joined the raid against **${s.boss.name}** ` +
+            `(${s.players.length}/${MIN_PLAYERS} needed).\n${EMOJI.godToken} God Token refunded to **${s.ownerUsername}**.`
+          );
+        if (emojiId) ce.setThumbnail(`https://cdn.discordapp.com/emojis/${emojiId}.png`);
         const msg = await channel.messages.fetch(s.messageId).catch(() => null);
-        if (msg) {
-          const ce = buildLobbyEmbed(s);
-          ce.setTitle(`${s.boss.name} | Raid Cancelled`);
-          ce.setColor('#888888');
-          ce.setFooter({ text: `Not enough players (${s.players.length}/${MIN_PLAYERS} needed). Raid cancelled — God Token refunded.` });
-          await msg.edit({ embeds: [ce], components: [] });
-        }
+        if (msg) await msg.edit({ embeds: [ce], components: [] });
       } catch (_) {}
       await refundGodToken(s.ownerId);
       raidStates.delete(channelId);
@@ -878,6 +951,9 @@ module.exports = {
 
     const action = customId.split(':')[1];
     await interaction.deferUpdate();
+
+    // Reset the whole-raid inactivity watchdog — a human responded
+    resetInactivityTimer(state);
 
     // ── Rest ─────────────────────────────────────────────────────────────────
     if (action === 'rest') {
