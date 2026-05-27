@@ -92,4 +92,40 @@ const UserSchema = new Schema({
   gambleCooldownUntil: { type: Date, default: null },
 });
 
+// Debugging hooks: log writes/updates to isailProgress to help trace resets
+UserSchema.pre('save', async function (next) {
+  try {
+    if (this.isModified && this.isModified('isailProgress')) {
+      const prev = await this.constructor.findOne({ _id: this._id }).lean().select('isailProgress');
+      const prevVal = prev ? prev.isailProgress : undefined;
+      console.log(`[User.save] user=${this.userId} isailProgress: ${prevVal} -> ${this.isailProgress}`);
+    }
+  } catch (e) {
+    console.error('Error in User.pre("save") hook logging isailProgress:', e);
+  }
+  next();
+});
+
+// Log direct update queries that modify isailProgress (updateOne/updateMany/findOneAndUpdate)
+async function _logQueryIsailProgress(query) {
+  try {
+    const update = query.getUpdate && query.getUpdate();
+    if (!update) return;
+    const set = update.$set || update;
+    if (Object.prototype.hasOwnProperty.call(set, 'isailProgress')) {
+      // Try to read an example existing doc for context (may be null for broad queries)
+      const q = query.getQuery && query.getQuery();
+      const sample = await query.model.findOne(q).lean().select('isailProgress userId');
+      const before = sample ? sample.isailProgress : undefined;
+      console.log(`[User.query:${query.op}] query=${JSON.stringify(q)} isailProgress: ${before} -> ${set.isailProgress}`);
+    }
+  } catch (e) {
+    console.error('Error logging isailProgress in query hook:', e);
+  }
+}
+
+UserSchema.pre('findOneAndUpdate', async function (next) { await _logQueryIsailProgress(this); next(); });
+UserSchema.pre('updateOne', async function (next) { await _logQueryIsailProgress(this); next(); });
+UserSchema.pre('updateMany', async function (next) { await _logQueryIsailProgress(this); next(); });
+
 module.exports = mongoose.model('User', UserSchema);
