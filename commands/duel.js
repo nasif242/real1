@@ -124,7 +124,14 @@ async function findCardInPoolByQuery(query, userId, pool) {
   } catch (e) {}
 
   // Fallback to matching by character name within the pool
-  let chosen = pool.find(c => (c.def.character || '').toLowerCase() === ql);
+  // try matching by title first (exact, then partial)
+  let chosen = pool.find(c => (c.def.title || '').toLowerCase() === ql);
+  if (chosen) return chosen;
+  chosen = pool.find(c => (c.def.title || '').toLowerCase().includes(ql));
+  if (chosen) return chosen;
+
+  // then try character exact/partial
+  chosen = pool.find(c => (c.def.character || '').toLowerCase() === ql);
   if (chosen) return chosen;
   chosen = pool.find(c => (c.def.character || '').toLowerCase().includes(ql));
   if (chosen) return chosen;

@@ -181,7 +181,7 @@ function buildBossFromDef(def) {
     name: def.character || 'Boss', title: def.title || '',
     emoji: def.emoji || '', image: def.image_url || def.image || null,
     cardId: def.id, rank: def.rank || 'D', attribute: def.attribute || 'STR',
-    maxHP: Math.floor(hp * 5), currentHP: Math.floor(hp * 5),
+    maxHP: Math.floor(hp * 6), currentHP: Math.floor(hp * 6),
     attack_min: Math.floor(bMin * 2),
     attack_max: Math.max(Math.floor(bMin * 2), Math.floor(bMax * 2)),
     status: [],
@@ -439,9 +439,9 @@ async function startRaidBattle(state) {
 async function processBossAttack(state) {
   const alive = state.players.filter(p => p.card && p.card.alive);
   if (!alive.length) return;
-  // Increment boss special counter and decide whether this attack is special
+  // Increment boss special counter and decide whether this attack is special (every other attack)
   state.bossSpecialCounter = (state.bossSpecialCounter || 0) + 1;
-  const isSpecial = state.bossSpecialCounter % 3 === 0;
+  const isSpecial = state.bossSpecialCounter % 2 === 0;
 
   const target = alive[randomInt(0, alive.length - 1)];
   const atkBase = randomInt(state.boss.attack_min, state.boss.attack_max);
