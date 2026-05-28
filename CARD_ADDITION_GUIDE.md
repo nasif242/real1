@@ -5,46 +5,175 @@ This guide explains how to properly add new cards to the game. Follow these inst
 
 ## Card ID Format
 
-all cards should have an ID field given from the requester
+All cards should have an ID field given from the requester.
 
 ## File Structure
 
-cards are defined in two main files:
-- **cards.js** - Primary cards (main story characters) Ships, and artifacts
+Cards are defined in two main files:
+- **cards.js** - Primary cards (main story characters), Ships, and Artifacts
 - **morecards.js** - Secondary cards (early arc and side characters)
 - **crews.js** - Faculty/crew definitions and their ranks
 - **marines.js** - Marine organization characters
 
-## Card Data Format
+## Source Layout
 
-Example:
+Both `cards.js` and `morecards.js` use the same **grouped format**:
+
+```
+Faculty block
+  └── Character block  (character name + aliases — shared by all cards below)
+        └── Card block   (id, stats, emoji, image, optional special attack…)
+        └── Card block
+        …
+  └── Character block
+        └── Card block
+        …
+Faculty block
+  └── …
+```
+
+### Faculty Block
 
 ```javascript
 {
-    character: 'Monkey D. Luffy',  //can share same name with other cards
-    alias: ['luffy', 'monkey d luffy', 'strawhat'], 
-    id: '2', // all characters have unique id
-    pullable: true,
-    attribute: 'STR',  // STR, QCK, INT, DEX, or PSY
-    emoji: '<:Luffygumgumpistol:1492353926257971341>', // All characters have different emoji
-    title: 'Gum-Gum Pistol',
-    faculty: 'Strawhat Pirates', 
-    rank: 'B', // D, C, B, A, S, SS or UR
-    power: 12,  // see #file:CARD_STAT_RANGES.md for stat ranges
-    health: 18,
-    speed: 4,
-    attack_min: 3,
-    attack_max: 4,
-    special_attack: {  //does not need to be stated (optional)
-      name: 'Gum-Gum Pistol',
-      min_atk: 5,  //usually double attack -1
-      max_atk: 8,  //usually double attack +1
-      gif: 'https://media1.tenor.com/m/eTo-ytFNLX8AAAAC/luffy-pistol.gif' //optional
-    },  
-    effect: 'stun',  // See #file: STATUS_EFFECTS.md for status effects, also optional
-    effectDuration: 1,
-    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0002.png'
+  faculty: 'Strawhat Pirates',   // string, or null for no-faculty characters
+  characters: [ … ]
+}
+```
+
+### Character Block
+
+```javascript
+{
+  character: 'Monkey D. Luffy',
+  alias: ['luffy', 'monkey d luffy', 'strawhat'],  // all lowercase
+  cards: [ … ]
+}
+```
+
+- `character` and `alias` are **shared** by every card nested inside — do not repeat them per card.
+- Aliases must be lowercase.
+- `pullable: true` is **not needed** — every card is pullable by default.
+
+### Card Block (normal fighter)
+
+```javascript
+{
+  title: 'Gum-Gum Pistol',      // card display name (omit for untitled base forms)
+  id: '0002',                    // unique string id
+  attribute: 'STR',              // STR | QCK | INT | DEX | PSY
+  rank: 'B',                     // D | C | B | A | S | SS | UR
+  power: 12, health: 18, speed: 4,
+  attack_min: 3, attack_max: 4,
+  emoji: '<:Luffygumgumpistol:1492353926257971341>',
+  image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0002.png',
+  special_attack: {              // optional; required for SS rank and above
+    name: 'Gum-Gum Pistol',
+    min_atk: 6, max_atk: 9,
+    gif: 'https://media1.tenor.com/m/eTo-ytFNLX8AAAAC/luffy-pistol.gif'
   },
+  effect: 'stun',               // see Status Effects section below (optional)
+  effectDuration: 1
+}
+```
+
+### Card Block (boost type)
+
+Some characters don't fight (doctors, cooks, etc.) — use a boost card:
+
+```javascript
+{
+  title: 'Barmaid of the Partys Bar',
+  id: '9999',
+  attribute: 'PSY',
+  rank: 'C',
+  power: 1, health: 8, speed: 1,
+  attack_min: 0, attack_max: 0,
+  boost: 'Monkey D. Luffy (5%), Figarland Shanks (5%)',
+  emoji: '<:Makino:1234567890>',
+  image_url: null
+}
+```
+
+Boost cards have **NO** `special_attack`.
+
+---
+
+## Full Example (two characters, same faculty)
+
+```javascript
+{
+  faculty: 'Strawhat Pirates',
+  characters: [
+    {
+      character: 'Monkey D. Luffy',
+      alias: ['luffy', 'monkey d luffy', 'strawhat'],
+      cards: [
+        {
+          id: '0001',
+          attribute: 'STR',
+          rank: 'C',
+          power: 8, health: 50, speed: 3,
+          attack_min: 2, attack_max: 3,
+          emoji: '<:MonkeyD:1492353158960124037>',
+          image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0001.png',
+          special_attack: {
+            name: 'Gum-Gum Pistol',
+            min_atk: 6, max_atk: 9,
+            gif: 'https://media1.tenor.com/m/eTo-ytFNLX8AAAAC/luffy-pistol.gif'
+          },
+          effect: 'stun', effectDuration: 1
+        },
+        {
+          title: 'Gum-Gum Pistol',
+          id: '0002',
+          attribute: 'STR',
+          rank: 'B',
+          power: 12, health: 18, speed: 4,
+          attack_min: 3, attack_max: 4,
+          emoji: '<:Luffygumgumpistol:1492353926257971341>',
+          image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0002.png',
+          special_attack: {
+            name: 'Gum-Gum Pistol',
+            min_atk: 6, max_atk: 9,
+            gif: 'https://media1.tenor.com/m/eTo-ytFNLX8AAAAC/luffy-pistol.gif'
+          },
+          effect: 'stun', effectDuration: 1
+        }
+      ]
+    },
+    {
+      character: 'Roronoa Zoro',
+      alias: ['zoro', 'roronoa zoro', 'pirate hunter'],
+      cards: [
+        {
+          id: '0005',
+          attribute: 'DEX',
+          rank: 'B',
+          power: 14, health: 22, speed: 4,
+          attack_min: 3, attack_max: 4,
+          emoji: '<:0005:1492532805434081510>',
+          image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0005.png'
+        }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+## Grouping Rules
+
+- **All cards for the same character must be inside the same character block.**
+- **All characters in the same faculty must be inside the same faculty block.**
+- **Faculty takes priority** — if a character could belong to two faculties, put them in the one that best fits their primary affiliation.
+- Characters with no faculty use `faculty: null`.
+- When a character only appears in `morecards.js`, their character block lives there (keep the two files separate).
+
+---
+
+## Rank Reference
 
 | Rank | Examples | Power Range | When to Use |
 |------|----------|-------------|------------|
@@ -56,91 +185,54 @@ Example:
 | SS | Elite level, major characters | 45-60+ power | Very powerful |
 | UR | Peak tier, protagonists | 50+ power | Extremely powerful |
 
+---
+
 ## Special Attacks
 
 - **Required for:** SS rank and above only
-- **Damage scaling:** Usually 1.5-2x normal attack damage (special_attack.max_atk ≈ 2-3x attack_max)
-- **All special attacks must include a status effect** (from the valid list above)
+- **Damage scaling:** Special attack max ≈ 2–3× normal attack_max
+- **All special attacks must include a status effect**
 - **Status effect strength scales with card importance:**
-  - Weaker cards: Choose gentler effects (confuse, attackdown, defensedown)
-  - Stronger cards: Choose more impactful effects (stun, freeze, bleed, undead)
-  - Elite/Yonko level: Use undead, stun, or bleed with high duration/amount
+  - Weaker cards: confuse, attackdown, defensedown
+  - Stronger cards: stun, freeze, bleed, undead
+  - Elite/Yonko level: undead, stun, or bleed with high duration/amount
 
-**Example:**
-- Normal attack: attack_max = 10
-- Special attack: max_atk = 18-25 (roughly 2-2.5x)
+---
 
-### Multi-target (`count` / `scount`) guidance
+## Multi-target (`count` / `scount`)
 
-- If a card uses `count` (normal attack multi-target) or `scount` (special multi-target), the intended behavior is to split the card's attack across the chosen targets.
-- IMPORTANT: Only set a `count` or `scount` property when the card input explicitly includes a leading target token before the parentheses. The canonical authoring tokens are:
-  - `2`  → `count: 2`
-  - `3`  → `count: 3`
-  - `-2` → `scount: 2`
-  - `-3` → `scount: 3`
-  (Do NOT add `count`/`scount` otherwise.)
-- For data authors and card-adder tools: when specifying `count: 2` the authored `attack_min`/`attack_max` represent the *total* attack pool and will be split across 2 targets at runtime (per-target = total/2). For `count: 3` per-target = total/3. The same applies to `scount` for special attacks.
-- Example: a special that authors a total `max_atk = 18` with `scount: 2` will deal ~`9` to each target; with `scount: 3` it will deal ~`6` to each.
-- Icon tokens: include the matching icon on consolidated cards when using target counts. Use the following tokens for quick embed display:
-  - `count: 2` or `scount: 2` → `countIcon` / `scountIcon`: `<:2_:1503002986560094228>`
-  - `count: 3` or `scount: 3` → `countIcon` / `scountIcon`: `<:3_:1503002985578365118>`
-- Validation: card-adder tools MUST only add `count`/`scount` for cards that had the leading token; use the project's `scripts/validate-card-counts.js` to verify enforcement before committing.
+- `count: 2` or `count: 3` — splits normal attack across that many targets
+- `scount: 2` or `scount: 3` — splits special attack across that many targets
+- Only add these when the card input explicitly includes a leading target token (2, 3, -2, -3)
+- Matching `countIcon` / `scountIcon` are set automatically at flatten-time — do NOT add them manually
+
+---
 
 ## Attributes
 
-Map character abilities to attributes based on the colored icon in the image. The letter shown is the first letter of the attribute:
+| Color | Icon Letter | Attribute | Examples |
+|-------|-------------|-----------|---------|
+| Red | S | STR | Luffy, Zoro, Whitebeard |
+| Green | D | DEX | Sanji, Nami, Usopp |
+| Blue | Q | QCK | Luffy (QCK forms), Yassopp |
+| Yellow | P | PSY | Chopper, Robin |
+| Purple | I | INT | Nami, Robin |
 
-| Color | Icon Letter | Attribute | Type | Examples |
-|-------|-------------|-----------|------|----------|
-| Red | S | STR | Strength/Power | Luffy, Zoro, Whitebeard |
-| Green | D | DEX | Dexterity/Speed | Sanji, Nami, Usopp |
-| Blue | Q | QCK | Quick/Speed | Luffy, Yassopp |
-| Yellow | P | PSY | Wisdom/Mind | Chopper, Robin |
-| Purple | I | INT | Intellect/Tactics | Nami, Robin |
-
-## Boost Type Cards
-
-Some characters cannot or primarily don't fight (doctors, cooks, navigators):
-
-**Boost type cards have:**
-- **NO** `special_attack`
-- `boost` field: String listing which characters they boost and by percentage
-
-**Example:**
-```javascript
-{
-  character: 'Makino',
-  title: 'Barmaid of the Partys Bar',
-  boost: 'Monkey D. Luffy (5%), Figarland Shanks (5%)',
-  // ... other fields
-}
-```
-
-## Stat Scaling Example
-
-**For B rank character:**
-```
-power: 12-15
-health: 20-25
-speed: 3-5
-attack_min: 2-3
-attack_max: 4-5
-```
-`
+---
 
 ## Faculty Management
 
-If a character belongs to a crew not in crews.js, add it following this format:
+If a character belongs to a crew not yet in `crews.js`, add it:
 
 ```javascript
 {
   name: "Crew/Faculty Name",
-  icon: '<:FacultyEmoji:1234567890>',  // Discord emoji
-  rank: 'A'                             // Crew's overall rank
+  icon: '<:FacultyEmoji:1234567890>',
+  rank: 'A'
 }
 ```
 
-Crew ranks roughly correspond to:
+Crew ranks:
 - D: Small/minor crews
 - C: Notable but small crews
 - B: Mid-tier crews
@@ -148,51 +240,52 @@ Crew ranks roughly correspond to:
 - S: Yonko crews, top-tier organizations
 - SS: Only for Yonko + Marines combo
 
+---
 
 ## Placeholder Values
 
-When you don't have final assets, use `null` instead of string placeholders:
+Use `null` (never a placeholder string) for missing assets:
 
-- **image_url:** `null`
-- **character emoji:** `null`
-- **gif in special_attack:** `null`
+- `image_url: null`
+- `emoji: null`
+- `gif: null` inside special_attack
 
-**Important:** Do NOT use string values like `'IMAGE_PLACEHOLDER'` as placeholders, as this will cause validation errors in Discord.js. Always use `null` for missing assets.
+---
 
 ## Valid Status Effects
 
-These are the ONLY available status effects in the game. Use ONLY these names:
+- **stun** — Prevents action for duration
+- **freeze** — Prevents action, unfrozen by taking damage
+- **cut** — 1 HP damage per turn
+- **bleed** — 2 HP damage per turn
+- **regen** — Restores percentage of max HP per turn
+- **confusion** — Chance to miss attacks (use `effectChance` for miss %)
+- **attackup** — Increases attack by percentage
+- **attackdown** — Decreases attack by percentage
+- **defenseup** — Increases defense by percentage
+- **defensedown** — Decreases defense by percentage
+- **truesight** — Dodges all incoming attacks
+- **undead** — Card remains alive at 0 HP
+- **reflect** — Reflects opponent's attack back
 
-- **stun** - Prevents action for duration
-- **freeze** - Prevents action, unfrozen by taking damage
-- **cut** - 1 HP damage per turn 
-- **bleed** - 2 HP damage per turn
-- **regen** - Restores percentage of max HP per turn 
-- **confusion** - Chance to miss attacks (use `effectChance` for miss %) 
-- **attackup** - (NOT "Attack Up") Increases attack by percentage
-- **attackdown** - (NOT "Attack Down") Decreases attack by percentage
-- **defenseup** - Increases defense by percentage
-- **defensedown** - Decreases defense by percentage
-- **truesight** - Dodges all incoming attacks
-- **undead** - Card remains alive at 0 HP
-- **reflect** - Refulects opponents attack to the opponent
+⚠️ **Does NOT exist:** `burn`, `poison`, `speeddown`, `paralysis`
 
-⚠️ **Common Mistakes:**
-- `burn` and `poison` do NOT exist - use `bleed` for damage-over-time effects
-- `speeddown` does NOT exist
-- `paralysis` does NOT exist - use `stun` or `freeze` instead
+---
 
-Before submitting cards:
+## Pre-submission Checklist
 
-- [ ] All required fields are filled (except placeholders)
+- [ ] All required fields are filled (use `null` for missing assets, never placeholder strings)
+- [ ] Character block is inside the correct faculty block
+- [ ] All cards for the same character are grouped in the same character block
+- [ ] Aliases are lowercase
 - [ ] Attributes match character abilities
 - [ ] Ranks are appropriate for anime importance
-- [ ] S+ rank cards have special attacks with status effects
+- [ ] SS+ rank cards have special attacks with status effects
+- [ ] Special attack damage ≈ 2× normal attack
+- [ ] Status effects are from the valid list only
+- [ ] Stronger cards have stronger/more impactful status effects
+- [ ] Non-combat support characters use boost type (attack_min/max: 0, boost field set)
+- [ ] All effect names are lowercase (attackdown, not "Attack Down")
+- [ ] Effect durations are reasonable (1–5 turns)
+- [ ] `pullable: true` is NOT written (not needed)
 - [ ] All faculties exist in crews.js
-- [ ] Aliases are lowercase
-- [ ] Special attack damage is approximately 2x normal attack
-- [ ] Effect durations are reasonable (1-5 turns)
-- [ ] **Status effects used are ONLY from the valid list** (no burn/poison/paralysis/speeddown)
-- [ ] **Stronger cards have stronger/more impactful status effects**
-- [ ] **Non-combat support characters use boost type** (power: 1, attack_min/max: 0, with boost field)
-- [ ] **All effect names use lowercase** (attackdown, defensedown, not "Attack Down")
