@@ -33,12 +33,22 @@ module.exports = {
       sub = args[0] && args[0].toLowerCase();
     }
 
-    if (!sub || sub !== 'add') {
-      const reply = 'Usage: `op teambg add "url"` or `/teambackground add url`';
+    if (!sub || (sub !== 'add' && sub !== 'remove')) {
+      const reply = 'Usage: `op teambg add "url"` | `op teambg remove` or `/teambackground add url` | `/teambackground remove`';
       if (message) return message.reply(reply);
       return interaction.reply({ content: reply, ephemeral: true });
     }
 
+    if (sub === 'remove') {
+      // Force remove the team background entirely
+      user.teamBackgroundUrl = null;
+      await user.save();
+      const reply = 'Team background removed.';
+      if (message) return message.reply(reply);
+      return interaction.reply({ content: reply, ephemeral: true });
+    }
+
+    // sub === 'add'
     const url = interaction ? interaction.options.getString('url') : args.slice(1).join(' ').replace(/^"|"$/g, '');
     if (!url) {
       const reply = 'Please provide a valid image URL.';

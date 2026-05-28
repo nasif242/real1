@@ -3,10 +3,18 @@ const { cards, rankData, artifactThumbnails } = require('../data/cards');
 const crews = require('../data/crews');
 const { PULL_RATES, PITY_TARGET, PITY_DISTRIBUTION } = require('../config');
 
-// Create icon map
+// Create icon map (normalize gif URLs so Tenor short links become media.tenor URLs)
 const crewIcons = {};
 crews.forEach(crew => {
-  crewIcons[crew.name] = crew.icon;
+  let iconVal = crew.icon;
+  try {
+    if (iconVal && typeof iconVal === 'string' && iconVal.startsWith && iconVal.startsWith('http')) {
+      iconVal = normalizeGifUrl(iconVal);
+    }
+  } catch (e) {
+    // ignore and fall back to raw icon
+  }
+  crewIcons[crew.name] = iconVal;
 });
 
 // Emoji used to mark favorited cards in embeds/lists
@@ -607,8 +615,9 @@ function buildPullEmbed(card, username, avatarUrl, pityText, duplicateInfo, user
   }
   const author = {};
   if (iconVal && pityText) {
-    if (iconVal.startsWith && iconVal.startsWith('http')) author.iconURL = iconVal;
-    else author.name = iconVal;
+    if (iconVal.startsWith && iconVal.startsWith('http')) {
+      try { author.iconURL = normalizeGifUrl(iconVal); } catch (e) { author.iconURL = iconVal; }
+    } else author.name = iconVal;
   }
   // always include a name field; use faculty if nothing else
   if (!author.name && pityText) author.name = card.faculty;
@@ -698,7 +707,9 @@ function buildPullEmbed(card, username, avatarUrl, pityText, duplicateInfo, user
       } else {
         const rankBadge = rankData[card.rank] && rankData[card.rank].badge;
         if (rankBadge) embed.setThumbnail(rankBadge);
-        else if (iconVal && iconVal.startsWith && iconVal.startsWith('http')) embed.setThumbnail(iconVal);
+        else if (iconVal && iconVal.startsWith && iconVal.startsWith('http')) {
+          try { embed.setThumbnail(normalizeGifUrl(iconVal)); } catch (e) { embed.setThumbnail(iconVal); }
+        }
       }
     }
   }
@@ -768,8 +779,9 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
 
   const author = {};
   if (iconUrl) {
-    if (iconUrl.startsWith && iconUrl.startsWith('http')) author.iconURL = iconUrl;
-    else author.name = iconUrl;
+    if (iconUrl.startsWith && iconUrl.startsWith('http')) {
+      try { author.iconURL = normalizeGifUrl(iconUrl); } catch (e) { author.iconURL = iconUrl; }
+    } else author.name = iconUrl;
   }
   if (!author.name) author.name = cardDef.faculty;
 
@@ -934,7 +946,9 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
         } else {
           const rankBadge = rankData[cardDef.rank] && rankData[cardDef.rank].badge;
           if (rankBadge) artifactEmbed.setThumbnail(rankBadge);
-          else if (iconUrl && iconUrl.startsWith && iconUrl.startsWith('http')) artifactEmbed.setThumbnail(iconUrl);
+          else if (iconUrl && iconUrl.startsWith && iconUrl.startsWith('http')) {
+            try { artifactEmbed.setThumbnail(normalizeGifUrl(iconUrl)); } catch (e) { artifactEmbed.setThumbnail(iconUrl); }
+          }
         }
       }
     }
@@ -982,7 +996,9 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
     } else {
       const rankBadge = rankData[cardDef.rank] && rankData[cardDef.rank].badge;
       if (rankBadge) embed.setThumbnail(rankBadge);
-      else if (iconUrl && iconUrl.startsWith && iconUrl.startsWith('http')) embed.setThumbnail(iconUrl);
+      else if (iconUrl && iconUrl.startsWith && iconUrl.startsWith('http')) {
+        try { embed.setThumbnail(normalizeGifUrl(iconUrl)); } catch (e) { embed.setThumbnail(iconUrl); }
+      }
     }
   }
 
