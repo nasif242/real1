@@ -47,63 +47,109 @@ function getAttributeEmoji(card) {
   return card.emoji;
 }
 
-// Enforce stat ranges per CARD_STAT_RANGES.md at flatten-time so runtime
-// consumers always observe consistent values. This clamps or raises values
-// to the accepted min/max for each rank. UR cards are treated as having
-// minimum thresholds (no upper bound).
-function clampStatsForRank(card) {
-  if (!card || !card.rank) return card;
-  const ranges = {
-    D: { power: [0,5], health: [1,8], speed: [1,1], attack_min: [1,1], attack_max: [1,1] },
-    C: { power: [5,10], health: [8,15], speed: [1,3], attack_min: [1,3], attack_max: [1,3] },
-    B: { power: [10,15], health: [15,26], speed: [1,5], attack_min: [1,5], attack_max: [1,5] },
-    A: { power: [15,20], health: [26,35], speed: [3,8], attack_min: [3,8], attack_max: [3,8] },
-    S: { power: [20,30], health: [35,50], speed: [6,12], attack_min: [6,12], attack_max: [6,12] },
-    SS: { power: [30,50], health: [50,80], speed: [10,20], attack_min: [10,20], attack_max: [10,20] },
-    UR: { power: [50, Infinity], health: [75, Infinity], speed: [18, Infinity], attack_min: [10, Infinity], attack_max: [20, Infinity] }
+// ---------------------------------------------------------------------------
+// Seeded PRNG — mulberry32 algorithm.
+// Produces a deterministic sequence from a numeric seed so the same card id
+// always generates the same stats across bot restarts.
+// ---------------------------------------------------------------------------
+function seedRng(seed) {
+  let s = seed >>> 0;
+  return () => {
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
-
-  const r = ranges[card.rank];
-  if (!r) return card;
-
-  const clamp = (v, mn, mx) => {
-    if (v == null || Number.isNaN(Number(v))) return v;
-    let n = Number(v);
-    if (Number.isFinite(mn) && n < mn) n = mn;
-    // Preserve authored high values: only enforce minimum thresholds.
-    // Historically the code clamped values to an upper bound from
-    // CARD_STAT_RANGES.md, but many existing cards intentionally exceed
-    // those upper bounds. Enforcing upper clamps here causes legitimate
-    // base stats (e.g. Chopper 0528 attack 14-18) to be reduced at
-    // flatten-time, which then get bumped by level-scaling and show
-    // incorrect values to users. To avoid silently modifying authored
-    // stats, only raise values below the minimums and do not reduce
-    // values above the documented maxima.
-    return n;
-  };
-
-  // If this card is a boost/artifact, attack values can be zero; skip attack clamps for boost cards.
-  const isBoost = !!card.boost || !!card.type && String(card.type).toLowerCase() === 'boost' || !!card.artifact;
-
-  card.power = clamp(card.power, r.power[0], r.power[1]);
-  card.health = clamp(card.health, r.health[0], r.health[1]);
-  card.speed = clamp(card.speed, r.speed[0], r.speed[1]);
-  if (!isBoost) {
-    card.attack_min = clamp(card.attack_min, r.attack_min[0], r.attack_min[1]);
-    card.attack_max = clamp(card.attack_max, r.attack_max[0], r.attack_max[1]);
-    if (card.attack_min > card.attack_max) card.attack_max = card.attack_min;
-  } else {
-    // ensure boost cards have zero attack where appropriate
-    if (typeof card.attack_min === 'number' && card.attack_min > 0) card.attack_min = 0;
-    if (typeof card.attack_max === 'number' && card.attack_max > 0) card.attack_max = 0;
-  }
-
-  return card;
 }
 
-// Flatten the new grouped format (faculty → characters → cards[]) into the flat
+// Hash a card id string to a 32-bit unsigned integer seed.
+function cardIdSeed(id) {
+  const str = String(id);
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) h = (((h << 5) + h) ^ str.charCodeAt(i)) >>> 0;
+  return h;
+}
+
+// ---------------------------------------------------------------------------
+// Stat ranges per rank.
+// Each stat has [min, max] for the full rank band.
+// UR uses finite upper bounds so generation is always well-defined.
+//
+// Rank modifier sub-bands (applied per stat independently):
+//   "S-"  → bottom 25 %  of the band  [min,  min + span*0.25]
+//   "S"   → middle 50 %               [min + span*0.25, min + span*0.75]
+//   "S+"  → top 25 %                  [min + span*0.75, max]
+// ---------------------------------------------------------------------------
+const RANK_STAT_RANGES = {
+  D:  { power: [0,  5],  health: [1,   8],  speed: [1,  1],  attack_min: [1,  1],  attack_max: [1,  1]  },
+  C:  { power: [5,  10], health: [8,   15], speed: [1,  3],  attack_min: [1,  3],  attack_max: [1,  3]  },
+  B:  { power: [10, 15], health: [15,  26], speed: [1,  5],  attack_min: [1,  5],  attack_max: [1,  5]  },
+  A:  { power: [15, 20], health: [26,  35], speed: [3,  8],  attack_min: [3,  8],  attack_max: [3,  8]  },
+  S:  { power: [20, 30], health: [35,  50], speed: [6,  12], attack_min: [6,  12], attack_max: [6,  12] },
+  SS: { power: [30, 50], health: [50,  80], speed: [10, 20], attack_min: [10, 20], attack_max: [10, 20] },
+  UR: { power: [50, 80], health: [75, 120], speed: [18, 30], attack_min: [15, 25], attack_max: [25, 40] }
+};
+
+// Parse a rank string that may have a +/- modifier (e.g. "S-", "SS+", "UR").
+// Returns { baseRank: string, modifier: -1 | 0 | 1 }.
+function parseRank(rank) {
+  if (!rank) return { baseRank: rank, modifier: 0 };
+  const last = rank[rank.length - 1];
+  if (last === '-') return { baseRank: rank.slice(0, -1), modifier: -1 };
+  if (last === '+') return { baseRank: rank.slice(0, -1), modifier:  1 };
+  return { baseRank: rank, modifier: 0 };
+}
+
+// Generate stats for a card deterministically from its rank and id.
+// isBoost: if true, attack_min / attack_max are forced to 0.
+function generateStatsForRank(rank, cardId, isBoost) {
+  const { baseRank, modifier } = parseRank(rank);
+  const r = RANK_STAT_RANGES[baseRank];
+  if (!r) return null;
+
+  const rng = seedRng(cardIdSeed(cardId));
+
+  // Pick a random integer within the modifier-adjusted sub-band.
+  function randStat(lo, hi) {
+    const span = hi - lo;
+    let bandLo, bandHi;
+    if (modifier === -1) { bandLo = lo;               bandHi = lo + span * 0.25; }
+    else if (modifier === 1) { bandLo = lo + span * 0.75; bandHi = hi; }
+    else                  { bandLo = lo + span * 0.25; bandHi = lo + span * 0.75; }
+    // For tiny / flat ranges both ends may be equal
+    if (bandHi <= bandLo) return Math.round(bandLo);
+    return Math.max(Math.round(lo), Math.min(Math.round(hi),
+      Math.round(bandLo + rng() * (bandHi - bandLo))));
+  }
+
+  const power      = randStat(r.power[0],      r.power[1]);
+  const health     = randStat(r.health[0],     r.health[1]);
+  const speed      = randStat(r.speed[0],      r.speed[1]);
+  let attack_min = 0, attack_max = 0;
+  if (!isBoost) {
+    attack_min = randStat(r.attack_min[0], r.attack_min[1]);
+    attack_max = randStat(r.attack_max[0], r.attack_max[1]);
+    if (attack_max < attack_min) attack_max = attack_min;
+  }
+
+  return { power, health, speed, attack_min, attack_max };
+}
+
+// Generate special-attack damage values from the card's base attack stats.
+// min_atk ≈ 1.5× attack_min, max_atk ≈ 2× attack_max.
+function generateSpecialStats(attack_min, attack_max) {
+  return {
+    min_atk: Math.max(1, Math.ceil(attack_min * 1.5)),
+    max_atk: Math.max(1, Math.ceil(attack_max * 2))
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Flatten the grouped format (faculty → characters → cards[]) into the flat
 // array expected by the rest of the codebase.
-// Each entry in groupedData is: { faculty, characters: [{ character, alias, cards: [...] }] }
+// Stats (power/health/speed/attack) are generated deterministically from the
+// card's rank + id using seeded RNG — they are NOT stored in the source data.
+// ---------------------------------------------------------------------------
 function flattenCards(groupedData) {
   const result = [];
   const usedIds = new Set();
@@ -123,11 +169,15 @@ function flattenCards(groupedData) {
           console.warn(`Card for ${character} has no explicit id, skipping`);
           continue;
         }
-
         if (usedIds.has(card.id)) {
           throw new Error(`Duplicate card id ${card.id} in card data`);
         }
         usedIds.add(card.id);
+
+        const isBoost = !!card.boost;
+
+        // Generate stats from rank — deterministic per card id
+        const stats = generateStatsForRank(card.rank, card.id, isBoost);
 
         const flatCard = {
           id: card.id,
@@ -139,23 +189,38 @@ function flattenCards(groupedData) {
           rank: card.rank,
           mastery: 1,
           pullable: true,
-          power: card.power,
-          health: card.health,
-          speed: card.speed,
-          attack_min: card.attack_min,
-          attack_max: card.attack_max,
           image_url: card.image_url
         };
 
-        if (card.special_attack) flatCard.special_attack = card.special_attack;
+        if (stats) {
+          flatCard.power      = stats.power;
+          flatCard.health     = stats.health;
+          flatCard.speed      = stats.speed;
+          flatCard.attack_min = stats.attack_min;
+          flatCard.attack_max = stats.attack_max;
+        }
+
+        // Special attack: generate damage values from the card's attack stats
+        if (card.special_attack) {
+          const sa = { ...card.special_attack };
+          if (stats && !isBoost) {
+            const saStats = generateSpecialStats(stats.attack_min, stats.attack_max);
+            sa.min_atk = saStats.min_atk;
+            sa.max_atk = saStats.max_atk;
+          }
+          flatCard.special_attack = sa;
+        }
+
         if (card.effect !== undefined) flatCard.effect = card.effect;
         if (card.effectDuration !== undefined) flatCard.effectDuration = card.effectDuration;
         if (card.effectAmount !== undefined) flatCard.effectAmount = card.effectAmount;
         if (card.effectChance !== undefined) flatCard.effectChance = card.effectChance;
         if (card.itself !== undefined) flatCard.itself = card.itself;
+
+        // count / scount — multi-target attack/special-attack
         if (card.count !== undefined) flatCard.count = card.count;
         if (card.scount !== undefined) flatCard.scount = card.scount;
-        // Backwards compatibility: migrate legacy `all` to `scount`/`count`
+        // Legacy `all` migration
         if (card.all !== undefined) {
           const val = card.all === true ? 3 : card.all;
           if (card.special_attack) flatCard.scount = val;
@@ -184,12 +249,6 @@ function flattenCards(groupedData) {
         if (card.cola !== undefined) flatCard.cola = card.cola;
         if (card.maxCola !== undefined) flatCard.maxCola = card.maxCola;
 
-        try {
-          clampStatsForRank(flatCard);
-        } catch (e) {
-          console.error('Error clamping stats for card', flatCard.id, e);
-        }
-
         result.push(flatCard);
       }
     }
@@ -212,14 +271,10 @@ const consolidatedCardData = [
           id: "0001",
           attribute: "STR",
           rank: "C",
-          power: 8, health: 50, speed: 3,
-          attack_min: 2, attack_max: 3,
           emoji: "<:MonkeyD:1492353158960124037>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0001.png",
           special_attack: {
             name: "Gum-Gum Pistol",
-            min_atk: 6,
-            max_atk: 9,
             gif: "https://media1.tenor.com/m/eTo-ytFNLX8AAAAC/luffy-pistol.gif"
           },
           effect: "stun",
@@ -230,14 +285,10 @@ const consolidatedCardData = [
           id: "0002",
           attribute: "STR",
           rank: "B",
-          power: 12, health: 18, speed: 4,
-          attack_min: 3, attack_max: 4,
           emoji: "<:Luffygumgumpistol:1492353926257971341>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0002.png",
           special_attack: {
             name: "Gum-Gum Pistol",
-            min_atk: 6,
-            max_atk: 9,
             gif: "https://media1.tenor.com/m/eTo-ytFNLX8AAAAC/luffy-pistol.gif"
           },
           effect: "stun",
@@ -248,14 +299,10 @@ const consolidatedCardData = [
           id: "0003",
           attribute: "STR",
           rank: "A",
-          power: 18, health: 30, speed: 6,
-          attack_min: 5, attack_max: 7,
           emoji: "<:Luffygumgumbazooka:1492505343291297874>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0003.png",
           special_attack: {
             name: "Gum-Gum Bazooka",
-            min_atk: 11,
-            max_atk: 15,
             gif: ""
           },
           effect: "stun",
@@ -266,14 +313,10 @@ const consolidatedCardData = [
           id: "0004",
           attribute: "STR",
           rank: "S",
-          power: 26, health: 42, speed: 10,
-          attack_min: 7, attack_max: 10,
           emoji: "<:0004:1492514154349723770>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0004.png",
           special_attack: {
             name: "Gear 2",
-            min_atk: 15,
-            max_atk: 18,
             gif: "https://media1.tenor.com/m/d1s-yLh9hcsAAAAC/one-piece.gif"
           },
           effect: "attackup",
@@ -285,14 +328,10 @@ const consolidatedCardData = [
           id: "0216",
           attribute: "STR",
           rank: "A",
-          power: 17, health: 32, speed: 5,
-          attack_min: 4, attack_max: 7,
           emoji: "<:0216:1492515036340555949>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/200/0216.png",
           special_attack: {
             name: "Gum-Gum Baloon",
-            min_atk: 9,
-            max_atk: 13,
             gif: "https://media1.tenor.com/m/YZqF7Vz-zeAAAAAC/fuusen-gomu.gif"
           },
           effect: "reflect",
@@ -304,14 +343,10 @@ const consolidatedCardData = [
           id: "0217",
           attribute: "STR",
           rank: "S",
-          power: 25, health: 40, speed: 10,
-          attack_min: 8, attack_max: 12,
           emoji: "<:0217:1492517167210565652>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/200/0217.png",
           special_attack: {
             name: "Gear Third",
-            min_atk: 15,
-            max_atk: 25,
             gif: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/200/0217.png"
           },
           effect: "stun",
@@ -322,14 +357,10 @@ const consolidatedCardData = [
           id: "0420",
           attribute: "STR",
           rank: "S",
-          power: 28, health: 45, speed: 11,
-          attack_min: 8, attack_max: 12,
           emoji: "<:0420:1492517825594654902>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/400/0420.png",
           special_attack: {
             name: "Gum-Gum Bazooka",
-            min_atk: 18,
-            max_atk: 24,
             gif: "https://media1.tenor.com/m/niocnoxo9kcAAAAC/luffy.gif"
           },
           effect: "stun",
@@ -340,8 +371,6 @@ const consolidatedCardData = [
           id: "0519",
           attribute: "STR",
           rank: "A",
-          power: 19, health: 34, speed: 6,
-          attack_min: 5, attack_max: 8,
           emoji: "<:0519:1492519794476318822>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0519.png"
         },
@@ -350,14 +379,10 @@ const consolidatedCardData = [
           id: "0520",
           attribute: "STR",
           rank: "S",
-          power: 28, health: 50, speed: 12,
-          attack_min: 9, attack_max: 12,
           emoji: "<:0520:1492520316885401610>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0520.png",
           special_attack: {
             name: "Gum-Gum Giant Thor Axe",
-            min_atk: 17,
-            max_atk: 24,
             gif: "https://media1.tenor.com/m/qATRdgVYZo0AAAAd/one-piece-one-piece-strong-world.gif"
           },
           effect: "attackup",
@@ -369,8 +394,6 @@ const consolidatedCardData = [
           id: "0570",
           attribute: "STR",
           rank: "B",
-          power: 14, health: 22, speed: 4,
-          attack_min: 4, attack_max: 6,
           emoji: "<:0570:1492524332940001381>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0570.png"
         },
@@ -379,8 +402,6 @@ const consolidatedCardData = [
           id: "0571",
           attribute: "STR",
           rank: "A",
-          power: 18, health: 30, speed: 6,
-          attack_min: 5, attack_max: 8,
           emoji: "<:0571:1492526058745106634>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0571.png"
         },
@@ -389,8 +410,6 @@ const consolidatedCardData = [
           id: "0577",
           attribute: "STR",
           rank: "S",
-          power: 26, health: 40, speed: 9,
-          attack_min: 7, attack_max: 10,
           emoji: "<:0577:1492526330875482353>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0577.png"
         },
@@ -399,14 +418,10 @@ const consolidatedCardData = [
           id: "0578",
           attribute: "STR",
           rank: "S",
-          power: 30, health: 45, speed: 12,
-          attack_min: 8, attack_max: 12,
           emoji: "<:0578:1492526792773341234>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0578.png",
           special_attack: {
             name: "Gum-Gum Jet Gatling",
-            min_atk: 16,
-            max_atk: 25,
             gif: "https://media1.tenor.com/m/dMFIkRa_YTgAAAAC/luffy-one.gif"
           },
           effect: "stun",
@@ -417,8 +432,6 @@ const consolidatedCardData = [
           id: "0659",
           attribute: "QCK",
           rank: "A",
-          power: 18, health: 30, speed: 7,
-          attack_min: 6, attack_max: 8,
           emoji: "<:0659:1492527517670838363>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/600/0659.png"
         },
@@ -427,14 +440,10 @@ const consolidatedCardData = [
           id: "0727",
           attribute: "DEX",
           rank: "A",
-          power: 19, health: 32, speed: 7,
-          attack_min: 6, attack_max: 9,
           emoji: "<:0727:1492527817903313086>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/700/0727.png",
           special_attack: {
             name: "Gum-Gum Gatling",
-            min_atk: 13,
-            max_atk: 18,
             gif: "https://media1.tenor.com/m/NOneFWcoDMUAAAAC/ratiobymuuk.gif"
           },
           effect: "stun",
@@ -445,8 +454,6 @@ const consolidatedCardData = [
           id: "0761",
           attribute: "DEX",
           rank: "A",
-          power: 17, health: 33, speed: 6,
-          attack_min: 5, attack_max: 8,
           emoji: "<:0761:1492528212880654386>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/700/0761.png"
         },
@@ -455,8 +462,6 @@ const consolidatedCardData = [
           id: "0794",
           attribute: "INT",
           rank: "A",
-          power: 18, health: 34, speed: 5,
-          attack_min: 5, attack_max: 8,
           emoji: "<:0794:1492528601281859694>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/700/0794.png"
         },
@@ -465,14 +470,10 @@ const consolidatedCardData = [
           id: "0795",
           attribute: "INT",
           rank: "S",
-          power: 27, health: 44, speed: 9,
-          attack_min: 8, attack_max: 11,
           emoji: "<:0795:1492528899848933516>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/700/0795.png",
           special_attack: {
             name: "Gum-Gum Storm",
-            min_atk: 17,
-            max_atk: 22,
             gif: "https://media1.tenor.com/m/jydojpfOT7UAAAAd/nightmare-luffy-gum-gum-storm.gif"
           },
           effect: "stun",
@@ -483,8 +484,6 @@ const consolidatedCardData = [
           id: "0936",
           attribute: "QCK",
           rank: "A",
-          power: 18, health: 32, speed: 8,
-          attack_min: 6, attack_max: 8,
           emoji: "<:0936:1492531934817947769>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0936.png"
         },
@@ -493,8 +492,6 @@ const consolidatedCardData = [
           id: "0937",
           attribute: "QCK",
           rank: "S",
-          power: 25, health: 42, speed: 10,
-          attack_min: 7, attack_max: 11,
           emoji: "<:0937:1492532329535635548>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0937.png"
         },
@@ -503,14 +500,10 @@ const consolidatedCardData = [
           id: "4448",
           attribute: "STR",
           rank: "SS",
-          power: 46, health: 70, speed: 14,
-          attack_min: 12, attack_max: 16,
           emoji: "<:1000047644:1495181602286731395>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/400/4448.png",
           special_attack: {
             name: "Vanquishing Gum-Gum Dawn Rocket",
-            min_atk: 28,
-            max_atk: 34,
             gif: null
           },
           effect: "confusion",
@@ -521,14 +514,10 @@ const consolidatedCardData = [
           id: "4447",
           attribute: "STR",
           rank: "S",
-          power: 28, health: 46, speed: 12,
-          attack_min: 9, attack_max: 11,
           emoji: "<:1000047646:1495182649201922068>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/400/4447.png",
           special_attack: {
             name: "Vanquishing Gum-Gum Dawn Rocket",
-            min_atk: 18,
-            max_atk: 24,
             gif: null
           },
           effect: "confusion",
@@ -539,14 +528,10 @@ const consolidatedCardData = [
           id: "4432",
           attribute: "QCK",
           rank: "SS",
-          power: 44, health: 66, speed: 16,
-          attack_min: 12, attack_max: 16,
           emoji: "<:1000047647:1495183096981491812>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/400/4432.png",
           special_attack: {
             name: "Gum-Gum Dawn Cymbal",
-            min_atk: 27,
-            max_atk: 34,
             gif: null
           },
           effect: "confusion",
@@ -557,8 +542,6 @@ const consolidatedCardData = [
           id: "4362",
           attribute: "INT",
           rank: "S",
-          power: 26, health: 40, speed: 9,
-          attack_min: 8, attack_max: 10,
           emoji: "<:1000047648:1495183576243769505>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/300/4362.png"
         },
@@ -567,8 +550,6 @@ const consolidatedCardData = [
           id: "4352",
           attribute: "STR",
           rank: "S",
-          power: 25, health: 40, speed: 9,
-          attack_min: 8, attack_max: 10,
           emoji: "<:1000047649:1495184123114029076>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/300/4352.png"
         },
@@ -577,8 +558,6 @@ const consolidatedCardData = [
           id: "4351",
           attribute: "STR",
           rank: "A",
-          power: 18, health: 30, speed: 6,
-          attack_min: 4, attack_max: 7,
           emoji: "<:1000047650:1495184521295958127>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/300/4351.png"
         },
@@ -587,14 +566,10 @@ const consolidatedCardData = [
           id: "4290",
           attribute: "STR",
           rank: "SS",
-          power: 45, health: 68, speed: 14,
-          attack_min: 12, attack_max: 16,
           emoji: "<:1000047651:1495184928046846146>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/200/4290.png",
           special_attack: {
             name: "Gomu Gomu no Gigant",
-            min_atk: 23,
-            max_atk: 32,
             gif: null
           },
           effect: "confusion",
@@ -605,14 +580,10 @@ const consolidatedCardData = [
           id: "4162",
           attribute: "DEX",
           rank: "UR",
-          power: 60, health: 80, speed: 20,
-          attack_min: 15, attack_max: 22,
           emoji: "<:4162:1502049156678553640>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/100/4162.png",
           special_attack: {
             name: "Gum-Gum Pistol",
-            min_atk: 40,
-            max_atk: 52,
             gif: null
           },
           effect: "stun",
@@ -623,14 +594,10 @@ const consolidatedCardData = [
           id: "4150",
           attribute: "INT",
           rank: "SS",
-          power: 42, health: 64, speed: 14,
-          attack_min: 12, attack_max: 16,
           emoji: "<:1000047653:1495186186510008370>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/100/4150.png",
           special_attack: {
             name: "Gomu Gomu no Gigant",
-            min_atk: 23,
-            max_atk: 33,
             gif: null
           },
           effect: "confusion",
@@ -641,8 +608,6 @@ const consolidatedCardData = [
           id: "4149",
           attribute: "INT",
           rank: "S",
-          power: 24, health: 40, speed: 9,
-          attack_min: 7, attack_max: 10,
           emoji: "<:1000047655:1495187568067874906>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/100/4149.png"
         },
@@ -651,14 +616,10 @@ const consolidatedCardData = [
           id: "4131",
           attribute: "DEX",
           rank: "SS",
-          power: 44, health: 66, speed: 14,
-          attack_min: 12, attack_max: 16,
           emoji: "<:1000047654:1495186628874862675>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/100/4131.png",
           special_attack: {
             name: "Gomu Gomu no Gigant",
-            min_atk: 23,
-            max_atk: 33,
             gif: null
           },
           effect: "confusion",
@@ -669,8 +630,6 @@ const consolidatedCardData = [
           id: "4130",
           attribute: "INT",
           rank: "S",
-          power: 24, health: 40, speed: 9,
-          attack_min: 7, attack_max: 10,
           emoji: "<:1000047656:1495188221947023550>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/100/4130.png"
         },
@@ -679,8 +638,6 @@ const consolidatedCardData = [
           id: "4129",
           attribute: "INT",
           rank: "S",
-          power: 24, health: 40, speed: 9,
-          attack_min: 7, attack_max: 10,
           emoji: "<:1000047657:1495188576508444873>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/100/4129.png"
         },
@@ -689,8 +646,6 @@ const consolidatedCardData = [
           id: "4085",
           attribute: "INT",
           rank: "S",
-          power: 24, health: 40, speed: 9,
-          attack_min: 7, attack_max: 10,
           emoji: "<:1000047658:1495189127627280414>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/000/4085.png"
         },
@@ -699,14 +654,10 @@ const consolidatedCardData = [
           id: "4071",
           attribute: "QCK",
           rank: "SS",
-          power: 44, health: 66, speed: 16,
-          attack_min: 12, attack_max: 16,
           emoji: "<:1000047659:1495189635758821386>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/000/4071.png",
           special_attack: {
             name: "Gum Gum Gatling",
-            min_atk: 28,
-            max_atk: 36,
             gif: null
           },
           effect: "stun",
@@ -717,14 +668,10 @@ const consolidatedCardData = [
           id: "4053",
           attribute: "QCK",
           rank: "SS",
-          power: 44, health: 66, speed: 16,
-          attack_min: 12, attack_max: 16,
           emoji: "<:1000047660:1495190237251637470>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/000/4053.png",
           special_attack: {
             name: "Gum Gum Gatling",
-            min_atk: 28,
-            max_atk: 36,
             gif: null
           },
           effect: "stun",
@@ -735,8 +682,6 @@ const consolidatedCardData = [
           id: "4047",
           attribute: "QCK",
           rank: "S",
-          power: 25, health: 40, speed: 9,
-          attack_min: 8, attack_max: 11,
           emoji: "<:1000047661:1495190825125154999>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/000/4047.png"
         },
@@ -745,14 +690,10 @@ const consolidatedCardData = [
           id: "4037",
           attribute: "PSY",
           rank: "UR",
-          power: 58, health: 82, speed: 20,
-          attack_min: 15, attack_max: 24,
           emoji: "<:1000047662:1495191490412937457>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/000/4037.png",
           special_attack: {
             name: "King Kong Gun Finisher",
-            min_atk: 36,
-            max_atk: 52,
             gif: null
           },
           effect: "confusion",
@@ -763,14 +704,10 @@ const consolidatedCardData = [
           id: "4012",
           attribute: "STR",
           rank: "SS",
-          power: 46, health: 70, speed: 14,
-          attack_min: 12, attack_max: 16,
           emoji: "<:1000047664:1495192400895676436>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/000/4012.png",
           special_attack: {
             name: "Gum-Gum Ryou Bazooka",
-            min_atk: 30,
-            max_atk: 40,
             gif: null
           },
           effect: "confusion",
@@ -787,8 +724,6 @@ const consolidatedCardData = [
           id: "0005",
           attribute: "DEX",
           rank: "B",
-          power: 14, health: 22, speed: 4,
-          attack_min: 3, attack_max: 4,
           emoji: "<:0005:1492532805434081510>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0005.png"
         },
@@ -797,14 +732,10 @@ const consolidatedCardData = [
           id: "0006",
           attribute: "DEX",
           rank: "A",
-          power: 18, health: 34, speed: 6,
-          attack_min: 5, attack_max: 8,
           emoji: "<:0006:1492533856388124885>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0006.png",
           special_attack: {
             name: "Three Thousand Worlds",
-            min_atk: 11,
-            max_atk: 16,
             gif: null
           },
           effect: "cut",
@@ -815,14 +746,10 @@ const consolidatedCardData = [
           id: "0007",
           attribute: "DEX",
           rank: "A",
-          power: 18, health: 32, speed: 7,
-          attack_min: 6, attack_max: 8,
           emoji: "<:0007:1492534760810090737>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0007.png",
           special_attack: {
             name: "108 Pound Phoenix",
-            min_atk: 13,
-            max_atk: 18,
             gif: "https://media1.tenor.com/m/GbiM4UcfKX4AAAAC/zoro-roronoa-zoro.gif"
           },
           effect: "cut",
@@ -833,14 +760,10 @@ const consolidatedCardData = [
           id: "0008",
           attribute: "DEX",
           rank: "S",
-          power: 26, health: 44, speed: 11,
-          attack_min: 8, attack_max: 11,
           emoji: "<:0008:1492535386617155768>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0008.png",
           special_attack: {
             name: "Ashura Ichibugin",
-            min_atk: 16,
-            max_atk: 22,
             gif: "https://media1.tenor.com/m/OrUXc8YuElgAAAAd/demon-asura-nine-sword-style.gif"
           },
           effect: "cut",
@@ -851,8 +774,6 @@ const consolidatedCardData = [
           id: "0218",
           attribute: "DEX",
           rank: "A",
-          power: 18, health: 34, speed: 6,
-          attack_min: 5, attack_max: 8,
           emoji: "<:0218:1492536048356556992>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/200/0218.png"
         },
@@ -861,14 +782,10 @@ const consolidatedCardData = [
           id: "0219",
           attribute: "DEX",
           rank: "S",
-          power: 25, health: 42, speed: 10,
-          attack_min: 8, attack_max: 11,
           emoji: "<:0219:1492537617156280460>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/200/0219.png",
           special_attack: {
             name: "Lion's Song",
-            min_atk: 16,
-            max_atk: 21,
             gif: "https://media1.tenor.com/m/CbYM0rXR3BwAAAAC/zoro-film-gold.gif"
           },
           effect: "cut",
@@ -879,14 +796,10 @@ const consolidatedCardData = [
           id: "0421",
           attribute: "DEX",
           rank: "A",
-          power: 19, health: 36, speed: 7,
-          attack_min: 6, attack_max: 9,
           emoji: "<:0421:1492538132594167891>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/400/0421.png",
           special_attack: {
             name: "Three Thousand Worlds: The Final Stroke",
-            min_atk: 13,
-            max_atk: 18,
             gif: null
           },
           effect: "cut",
@@ -897,8 +810,6 @@ const consolidatedCardData = [
           id: "0553",
           attribute: "DEX",
           rank: "A",
-          power: 18, health: 33, speed: 7,
-          attack_min: 5, attack_max: 8,
           emoji: "<:0553:1492539398821118062>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0553.png"
         },
@@ -907,8 +818,6 @@ const consolidatedCardData = [
           id: "0554",
           attribute: "DEX",
           rank: "S",
-          power: 25, health: 44, speed: 10,
-          attack_min: 8, attack_max: 11,
           emoji: "<:0554:1492539868067139756>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0554.png"
         },
@@ -917,8 +826,6 @@ const consolidatedCardData = [
           id: "0579",
           attribute: "QCK",
           rank: "A",
-          power: 17, health: 31, speed: 8,
-          attack_min: 6, attack_max: 8,
           emoji: "<:0579:1492540212600115422>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0579.png"
         },
@@ -927,8 +834,6 @@ const consolidatedCardData = [
           id: "0580",
           attribute: "QCK",
           rank: "S",
-          power: 26, health: 43, speed: 10,
-          attack_min: 8, attack_max: 11,
           emoji: "<:0580:1492540767875366932>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0580.png"
         },
@@ -937,8 +842,6 @@ const consolidatedCardData = [
           id: "0766",
           attribute: "QCK",
           rank: "A",
-          power: 18, health: 32, speed: 8,
-          attack_min: 6, attack_max: 8,
           emoji: "<:0766:1492541145895665685>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/700/0766.png"
         },
@@ -947,8 +850,6 @@ const consolidatedCardData = [
           id: "0905",
           attribute: "STR",
           rank: "A",
-          power: 19, health: 34, speed: 6,
-          attack_min: 6, attack_max: 8,
           emoji: "<:0905:1492541781055897799>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0905.png"
         },
@@ -957,8 +858,6 @@ const consolidatedCardData = [
           id: "0906",
           attribute: "STR",
           rank: "S",
-          power: 25, health: 42, speed: 10,
-          attack_min: 8, attack_max: 11,
           emoji: "<:0906:1492542082622160957>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0906.png"
         },
@@ -967,14 +866,10 @@ const consolidatedCardData = [
           id: "4378",
           attribute: "DEX",
           rank: "UR",
-          power: 62, health: 82, speed: 20,
-          attack_min: 16, attack_max: 22,
           emoji: "<:1000047665:1495193197918556412>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/300/4378.png",
           special_attack: {
             name: "Cross-Slashing Blades",
-            min_atk: 40,
-            max_atk: 52,
             gif: null
           },
           effect: "bleed",
@@ -986,14 +881,10 @@ const consolidatedCardData = [
           id: "4371",
           attribute: "QCK",
           rank: "UR",
-          power: 60, health: 80, speed: 20,
-          attack_min: 15, attack_max: 22,
           emoji: "<:1000048388:1498069571834216629>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/300/4371.png",
           special_attack: {
             name: "Cross-Slashing Blades",
-            min_atk: 40,
-            max_atk: 52,
             gif: null
           },
           effect: "bleed",
@@ -1005,14 +896,10 @@ const consolidatedCardData = [
           id: "4266",
           attribute: "INT",
           rank: "SS",
-          power: 45, health: 70, speed: 14,
-          attack_min: 12, attack_max: 16,
           emoji: "<:1000048390:1498070535345541171>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/200/4266.png",
           special_attack: {
             name: "True Potential of the Katana",
-            min_atk: 28,
-            max_atk: 36,
             gif: null
           },
           effect: "bleed",
@@ -1024,8 +911,6 @@ const consolidatedCardData = [
           id: "4265",
           attribute: "INT",
           rank: "S",
-          power: 26, health: 42, speed: 9,
-          attack_min: 8, attack_max: 10,
           emoji: "<:1000048391:1498071118123372564>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/200/4265.png"
         },
@@ -1034,8 +919,6 @@ const consolidatedCardData = [
           id: "4214",
           attribute: "STR",
           rank: "S",
-          power: 25, health: 40, speed: 9,
-          attack_min: 8, attack_max: 10,
           emoji: "<:1000048392:1498072101914017923>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/200/4214.png"
         },
@@ -1044,14 +927,10 @@ const consolidatedCardData = [
           id: "4171",
           attribute: "DEX",
           rank: "SS",
-          power: 44, health: 68, speed: 14,
-          attack_min: 12, attack_max: 16,
           emoji: "<:1000048393:1498073057187860741>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/100/4171.png",
           special_attack: {
             name: "One Sword Style: Lion's Strike",
-            min_atk: 28,
-            max_atk: 36,
             gif: null
           },
           effect: "bleed",
@@ -1063,8 +942,6 @@ const consolidatedCardData = [
           id: "4155",
           attribute: "DEX",
           rank: "S",
-          power: 24, health: 40, speed: 9,
-          attack_min: 7, attack_max: 10,
           emoji: "<:1000048394:1498073609045020862>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/100/4155.png"
         },
@@ -1073,14 +950,10 @@ const consolidatedCardData = [
           id: "4090",
           attribute: "PSY",
           rank: "S",
-          power: 24, health: 40, speed: 9,
-          attack_min: 7, attack_max: 10,
           emoji: "<:1000048395:1498074353294901358>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/000/4090.png",
           special_attack: {
             name: "Splitting One-Sword Style: Bird Dance",
-            min_atk: 16,
-            max_atk: 22,
             gif: null
           }
         }
@@ -1095,8 +968,6 @@ const consolidatedCardData = [
           id: "0009",
           attribute: "INT",
           rank: "B",
-          power: 13, health: 22, speed: 4,
-          attack_min: 2, attack_max: 4,
           emoji: "<:0009:1492609629807448094>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0009.png"
         },
@@ -1105,14 +976,10 @@ const consolidatedCardData = [
           id: "0010",
           attribute: "INT",
           rank: "A",
-          power: 18, health: 30, speed: 7,
-          attack_min: 5, attack_max: 7,
           emoji: "<:0010:1492610844695986276>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0010.png",
           special_attack: {
             name: "Tornado Tempo",
-            min_atk: 10,
-            max_atk: 13,
             gif: null
           },
           effect: "stun",
@@ -1123,14 +990,10 @@ const consolidatedCardData = [
           id: "0011",
           attribute: "INT",
           rank: "A",
-          power: 17, health: 29, speed: 7,
-          attack_min: 4, attack_max: 7,
           emoji: "<:0011:1492646094125924553>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0011.png",
           special_attack: {
             name: "Mirage Tempo",
-            min_atk: 8,
-            max_atk: 13,
             gif: "https://media1.tenor.com/m/DjG8UDDaw7IAAAAd/one-piece-nami.gif"
           },
           effect: "confusion",
@@ -1141,14 +1004,10 @@ const consolidatedCardData = [
           id: "0012",
           attribute: "INT",
           rank: "S",
-          power: 26, health: 44, speed: 10,
-          attack_min: 8, attack_max: 11,
           emoji: "<:0012:1492646615738220646>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0012.png",
           special_attack: {
             name: "Thunderbolt Tempo",
-            min_atk: 16,
-            max_atk: 21,
             gif: "https://media1.tenor.com/m/04rqkR4x6CgAAAAd/nami.gif"
           },
           effect: "stun",
@@ -1159,14 +1018,10 @@ const consolidatedCardData = [
           id: "0220",
           attribute: "INT",
           rank: "A",
-          power: 18, health: 31, speed: 6,
-          attack_min: 5, attack_max: 8,
           emoji: "<:0220:1492647395098624081>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/200/0220.png",
           special_attack: {
             name: "Fine Tempo",
-            min_atk: 10,
-            max_atk: 14,
             gif: null
           },
           effect: "stun",
@@ -1177,14 +1032,10 @@ const consolidatedCardData = [
           id: "0221",
           attribute: "INT",
           rank: "S",
-          power: 28, health: 45, speed: 10,
-          attack_min: 9, attack_max: 12,
           emoji: "<:0221:1492647790126305400>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/200/0221.png",
           special_attack: {
             name: "Happiness Punch",
-            min_atk: 18,
-            max_atk: 24,
             gif: "https://media1.tenor.com/m/NM44zX9jYasAAAAd/nami-vivi.gif"
           },
           effect: "confusion",
@@ -1195,14 +1046,10 @@ const consolidatedCardData = [
           id: "0422",
           attribute: "INT",
           rank: "A",
-          power: 19, health: 32, speed: 7,
-          attack_min: 5, attack_max: 8,
           emoji: "<:0422:1492648422547656724>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/400/0422.png",
           special_attack: {
             name: "Mirage Tempo",
-            min_atk: 8,
-            max_atk: 13,
             gif: "https://media1.tenor.com/m/DjG8UDDaw7IAAAAd/one-piece-nami.gif"
           },
           effect: "confusion",
@@ -1213,8 +1060,6 @@ const consolidatedCardData = [
           id: "0523",
           attribute: "QCK",
           rank: "A",
-          power: 18, health: 31, speed: 7,
-          attack_min: 5, attack_max: 8,
           emoji: "<:0523:1492648873913618652>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0523.png"
         },
@@ -1223,8 +1068,6 @@ const consolidatedCardData = [
           id: "0524",
           attribute: "QCK",
           rank: "S",
-          power: 27, health: 44, speed: 10,
-          attack_min: 9, attack_max: 12,
           emoji: "<:0524:1492651626035548222>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0524.png"
         },
@@ -1233,14 +1076,10 @@ const consolidatedCardData = [
           id: "0535",
           attribute: "DEX",
           rank: "A",
-          power: 18, health: 32, speed: 8,
-          attack_min: 6, attack_max: 8,
           emoji: "<:0535:1492652002948153394>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0535.png",
           special_attack: {
             name: "Mirage Tempo Fata Morgana: Blossom",
-            min_atk: 12,
-            max_atk: 15,
             gif: "https://media1.tenor.com/m/4bXHBKQLDQcAAAAC/nami-mirage-tempo.gif"
           },
           effect: "confusion",
@@ -1251,14 +1090,10 @@ const consolidatedCardData = [
           id: "0536",
           attribute: "DEX",
           rank: "S",
-          power: 28, health: 45, speed: 10,
-          attack_min: 9, attack_max: 12,
           emoji: "<:0536:1492652666059227217>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0536.png",
           special_attack: {
             name: "Mirage Tempo Fata Morgana: Blossom",
-            min_atk: 18,
-            max_atk: 24,
             gif: "https://media1.tenor.com/m/4bXHBKQLDQcAAAAC/nami-mirage-tempo.gif"
           },
           effect: "confusion",
@@ -1269,8 +1104,6 @@ const consolidatedCardData = [
           id: "0576",
           attribute: "INT",
           rank: "A",
-          power: 17, health: 30, speed: 6,
-          attack_min: 5, attack_max: 8,
           emoji: "<:0576:1492653026119254046>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0576.png"
         },
@@ -1279,8 +1112,6 @@ const consolidatedCardData = [
           id: "0650",
           attribute: "INT",
           rank: "A",
-          power: 18, health: 31, speed: 7,
-          attack_min: 5, attack_max: 8,
           emoji: "<:0650:1492653333654016141>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/600/0650.png"
         },
@@ -1289,8 +1120,6 @@ const consolidatedCardData = [
           id: "0651",
           attribute: "INT",
           rank: "S",
-          power: 27, health: 43, speed: 10,
-          attack_min: 9, attack_max: 12,
           emoji: "<:0651:1492653995460657272>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/600/0651.png"
         },
@@ -1299,8 +1128,6 @@ const consolidatedCardData = [
           id: "0662",
           attribute: "PSY",
           rank: "A",
-          power: 17, health: 30, speed: 7,
-          attack_min: 5, attack_max: 8,
           emoji: "<:0662:1492655163134181476>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/600/0662.png"
         },
@@ -1309,8 +1136,6 @@ const consolidatedCardData = [
           id: "0680",
           attribute: "DEX",
           rank: "A",
-          power: 18, health: 32, speed: 8,
-          attack_min: 6, attack_max: 8,
           emoji: "<:0680:1492655465455161434>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/600/0680.png"
         },
@@ -1319,8 +1144,6 @@ const consolidatedCardData = [
           id: "0681",
           attribute: "DEX",
           rank: "S",
-          power: 27, health: 44, speed: 11,
-          attack_min: 9, attack_max: 12,
           emoji: "<:0681:1492655780099264662>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/600/0681.png"
         },
@@ -1329,8 +1152,6 @@ const consolidatedCardData = [
           id: "0764",
           attribute: "QCK",
           rank: "A",
-          power: 18, health: 32, speed: 8,
-          attack_min: 6, attack_max: 8,
           emoji: "<:0764:1492656117946384457>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/700/0764.png"
         },
@@ -1339,8 +1160,6 @@ const consolidatedCardData = [
           id: "0807",
           attribute: "PSY",
           rank: "B",
-          power: 14, health: 24, speed: 5,
-          attack_min: 3, attack_max: 5,
           emoji: "<:0807:1492656519135625368>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/800/0807.png"
         },
@@ -1349,8 +1168,6 @@ const consolidatedCardData = [
           id: "0808",
           attribute: "PSY",
           rank: "A",
-          power: 18, health: 32, speed: 7,
-          attack_min: 6, attack_max: 8,
           emoji: "<:0808:1492656853895610460>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/800/0808.png"
         },
@@ -1359,8 +1176,6 @@ const consolidatedCardData = [
           id: "0863",
           attribute: "QCK",
           rank: "A",
-          power: 18, health: 32, speed: 7,
-          attack_min: 6, attack_max: 8,
           emoji: "<:0863:1492657325188841732>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/800/0863.png"
         },
@@ -1369,8 +1184,6 @@ const consolidatedCardData = [
           id: "0938",
           attribute: "PSY",
           rank: "A",
-          power: 17, health: 31, speed: 7,
-          attack_min: 5, attack_max: 8,
           emoji: "<:0938:1492657715208786062>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0938.png"
         },
@@ -1379,8 +1192,6 @@ const consolidatedCardData = [
           id: "0939",
           attribute: "PSY",
           rank: "S",
-          power: 28, health: 45, speed: 10,
-          attack_min: 9, attack_max: 12,
           emoji: "<:0939:1492658221410812154>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0939.png"
         },
@@ -1389,8 +1200,6 @@ const consolidatedCardData = [
           id: "4531",
           attribute: "DEX",
           rank: "S",
-          power: 24, health: 40, speed: 9,
-          attack_min: 7, attack_max: 10,
           emoji: "<:1000048396:1498074913045483520>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/500/4531.png"
         },
@@ -1399,14 +1208,10 @@ const consolidatedCardData = [
           id: "4394",
           attribute: "STR",
           rank: "SS",
-          power: 44, health: 68, speed: 14,
-          attack_min: 12, attack_max: 16,
           emoji: "<:1000048397:1498075411119079524>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/300/4394.png",
           special_attack: {
             name: "Zeus Tempo",
-            min_atk: 28,
-            max_atk: 36,
             gif: null
           },
           effect: "confusion",
@@ -1417,14 +1222,10 @@ const consolidatedCardData = [
           id: "4367",
           attribute: "PSY",
           rank: "SS",
-          power: 40, health: 64, speed: 14,
-          attack_min: 12, attack_max: 16,
           emoji: "<:1000048398:1498076118597636317>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/300/4367.png",
           special_attack: {
             name: "Eye Catching Swordplay",
-            min_atk: 26,
-            max_atk: 34,
             gif: null
           }
         },
@@ -1433,8 +1234,6 @@ const consolidatedCardData = [
           id: "4361",
           attribute: "PSY",
           rank: "S",
-          power: 24, health: 40, speed: 9,
-          attack_min: 7, attack_max: 10,
           emoji: "<:1000048399:1498076614309970031>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/300/4361.png"
         },
@@ -1443,14 +1242,10 @@ const consolidatedCardData = [
           id: "4186",
           attribute: "DEX",
           rank: "SS",
-          power: 44, health: 68, speed: 14,
-          attack_min: 12, attack_max: 16,
           emoji: "<:1000048400:1498076896263405618>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/100/4186.png",
           special_attack: {
             name: "Thunder Lance Tempo",
-            min_atk: 28,
-            max_atk: 36,
             gif: null
           },
           effect: "confusion",
@@ -1461,8 +1256,6 @@ const consolidatedCardData = [
           id: "4157",
           attribute: "INT",
           rank: "S",
-          power: 18, health: 30, speed: 6,
-          attack_min: 5, attack_max: 7,
           emoji: "<:1000048401:1498077677960040583>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/100/4157.png"
         },
@@ -1471,8 +1264,6 @@ const consolidatedCardData = [
           id: "4093",
           attribute: "PSY",
           rank: "S",
-          power: 20, health: 32, speed: 7,
-          attack_min: 5, attack_max: 8,
           emoji: "<:1000048402:1498077936421568634>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/000/4093.png"
         },
@@ -1481,8 +1272,6 @@ const consolidatedCardData = [
           id: "4072",
           attribute: "QCK",
           rank: "S",
-          power: 18, health: 32, speed: 8,
-          attack_min: 6, attack_max: 8,
           emoji: "<:1000048403:1498078451813322883>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/000/4072.png"
         }
@@ -1497,8 +1286,6 @@ const consolidatedCardData = [
           id: "0013",
           attribute: "PSY",
           rank: "B",
-          power: 13, health: 23, speed: 4,
-          attack_min: 3, attack_max: 5,
           emoji: "<:0013:1492660263441137825>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0013.png"
         },
@@ -1507,14 +1294,10 @@ const consolidatedCardData = [
           id: "0014",
           attribute: "PSY",
           rank: "A",
-          power: 18, health: 30, speed: 7,
-          attack_min: 5, attack_max: 8,
           emoji: "<:0014:1492660530299539496>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0014.png",
           special_attack: {
             name: "Tabasco Star",
-            min_atk: 11,
-            max_atk: 15,
             gif: "https://media1.tenor.com/m/fL__PyRJTuYAAAAC/usopp-one-piece.gif"
           },
           effect: "bleed",
@@ -1525,14 +1308,10 @@ const consolidatedCardData = [
           id: "0015",
           attribute: "PSY",
           rank: "A",
-          power: 18, health: 31, speed: 7,
-          attack_min: 5, attack_max: 8,
           emoji: "<:0015:1492661033280733205>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0015.png",
           special_attack: {
             name: "Golden Pound",
-            min_atk: 11,
-            max_atk: 15,
             gif: "https://media1.tenor.com/m/2KCIdLi3NJ4AAAAd/usopp-one-piece.gif"
           },
           effect: "confusion",
@@ -1543,8 +1322,6 @@ const consolidatedCardData = [
           id: "0016",
           attribute: "PSY",
           rank: "S",
-          power: 26, health: 43, speed: 9,
-          attack_min: 8, attack_max: 11,
           emoji: "<:0016:1492662917760422009>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0016.png"
         },
@@ -1553,14 +1330,10 @@ const consolidatedCardData = [
           id: "0222",
           attribute: "PSY",
           rank: "B",
-          power: 14, health: 25, speed: 5,
-          attack_min: 3, attack_max: 5,
           emoji: "<:0222:1492663511661416458>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/200/0222.png",
           special_attack: {
             name: "Usopp Hammer",
-            min_atk: 7,
-            max_atk: 10,
             gif: "https://media1.tenor.com/m/NG52898sDosAAAAd/usopp-usopp-hammer.gif"
           },
           effect: "confusion",
@@ -1571,14 +1344,10 @@ const consolidatedCardData = [
           id: "0223",
           attribute: "PSY",
           rank: "A",
-          power: 17, health: 32, speed: 7,
-          attack_min: 5, attack_max: 8,
           emoji: "<:0223:1492663948510625925>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/200/0223.png",
           special_attack: {
             name: "Impact Dial",
-            min_atk: 10,
-            max_atk: 14,
             gif: "https://media1.tenor.com/m/-M-KbgWbDuUAAAAd/usopp-one-piece.gif"
           },
           effect: "attackdown",
@@ -1590,8 +1359,6 @@ const consolidatedCardData = [
           id: "0517",
           attribute: "PSY",
           rank: "A",
-          power: 18, health: 31, speed: 7,
-          attack_min: 5, attack_max: 8,
           emoji: "<:0517:1492665046113980537>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0517.png"
         },
@@ -1600,8 +1367,6 @@ const consolidatedCardData = [
           id: "0518",
           attribute: "PSY",
           rank: "S",
-          power: 26, health: 44, speed: 10,
-          attack_min: 9, attack_max: 12,
           emoji: "<:0518:1492665322455433391>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0518.png"
         },
@@ -1610,8 +1375,6 @@ const consolidatedCardData = [
           id: "0555",
           attribute: "QCK",
           rank: "A",
-          power: 18, health: 32, speed: 8,
-          attack_min: 6, attack_max: 8,
           emoji: "<:0555:1492665883405975634>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0555.png"
         },
@@ -1620,8 +1383,6 @@ const consolidatedCardData = [
           id: "0556",
           attribute: "QCK",
           rank: "S",
-          power: 26, health: 44, speed: 10,
-          attack_min: 9, attack_max: 12,
           emoji: "<:0556:1492666157931696178>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0556.png"
         },
@@ -1630,8 +1391,6 @@ const consolidatedCardData = [
           id: "0572",
           attribute: "DEX",
           rank: "A",
-          power: 17, health: 30, speed: 8,
-          attack_min: 6, attack_max: 8,
           emoji: "<:0572:1492666486215544904>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0572.png"
         },
@@ -1640,8 +1399,6 @@ const consolidatedCardData = [
           id: "0660",
           attribute: "QCK",
           rank: "A",
-          power: 18, health: 31, speed: 8,
-          attack_min: 6, attack_max: 8,
           emoji: "<:0660:1492666702587236422>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/600/0660.png"
         },
@@ -1650,8 +1407,6 @@ const consolidatedCardData = [
           id: "0661",
           attribute: "QCK",
           rank: "S",
-          power: 26, health: 44, speed: 10,
-          attack_min: 9, attack_max: 12,
           emoji: "<:0661:1492666946758381608>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/600/0661.png"
         },
@@ -1660,8 +1415,6 @@ const consolidatedCardData = [
           id: "0762",
           attribute: "PSY",
           rank: "A",
-          power: 18, health: 32, speed: 7,
-          attack_min: 5, attack_max: 8,
           emoji: "<:0762:1492667260693774407>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/700/0762.png"
         },
@@ -1670,14 +1423,10 @@ const consolidatedCardData = [
           id: "0867",
           attribute: "DEX",
           rank: "A",
-          power: 18, health: 32, speed: 8,
-          attack_min: 6, attack_max: 8,
           emoji: "<:0867:1492667722142715995>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/700/0762.png",
           special_attack: {
             name: "Pepper Sauce Star: Strike",
-            min_atk: 12,
-            max_atk: 15,
             gif: "https://media1.tenor.com/m/L3Zfs1_z5gkAAAAd/usopp-one-piece.gif"
           },
           effect: "bleed",
@@ -1688,8 +1437,6 @@ const consolidatedCardData = [
           id: "0940",
           attribute: "DEX",
           rank: "A",
-          power: 18, health: 32, speed: 7,
-          attack_min: 5, attack_max: 8,
           emoji: "<:0940:1492669371082870956>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0940.png"
         },
@@ -1698,8 +1445,6 @@ const consolidatedCardData = [
           id: "0941",
           attribute: "DEX",
           rank: "S",
-          power: 26, health: 44, speed: 10,
-          attack_min: 9, attack_max: 12,
           emoji: "<:0941:1492669607977423041>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0941.png"
         },
@@ -1708,8 +1453,6 @@ const consolidatedCardData = [
           id: "4368",
           attribute: "DEX",
           rank: "S",
-          power: 18, health: 30, speed: 7,
-          attack_min: 5, attack_max: 8,
           emoji: "<:1000048404:1498078779132870806>",
           image_url: null
         },
@@ -1718,14 +1461,10 @@ const consolidatedCardData = [
           id: "4179",
           attribute: "DEX",
           rank: "SS",
-          power: 42, health: 65, speed: 14,
-          attack_min: 12, attack_max: 16,
           emoji: "<:1000048405:1498079147841552485>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/100/4179.png",
           special_attack: {
             name: "Killer Long Distance Bagworm",
-            min_atk: 28,
-            max_atk: 36,
             gif: null
           },
           effect: "stun",
@@ -1742,8 +1481,6 @@ const consolidatedCardData = [
           id: "0017",
           attribute: "QCK",
           rank: "B",
-          power: 14, health: 24, speed: 5,
-          attack_min: 3, attack_max: 5,
           emoji: "<:0017:1492692959739510885>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0017.png"
         },
@@ -1752,14 +1489,10 @@ const consolidatedCardData = [
           id: "0018",
           attribute: "QCK",
           rank: "A",
-          power: 18, health: 31, speed: 8,
-          attack_min: 6, attack_max: 8,
           emoji: "<:0018:1492693787409907895>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0018.png",
           special_attack: {
             name: "Plastic Surgery Shot",
-            min_atk: 12,
-            max_atk: 16,
             gif: "https://tenor.com/bWrQf.gif"
           },
           effect: "confusion",
@@ -1770,8 +1503,6 @@ const consolidatedCardData = [
           id: "0019",
           attribute: "QCK",
           rank: "A",
-          power: 18, health: 32, speed: 7,
-          attack_min: 6, attack_max: 8,
           emoji: "<:0019:1492696111973138433>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0019.png"
         },
@@ -1780,14 +1511,10 @@ const consolidatedCardData = [
           id: "0020",
           attribute: "QCK",
           rank: "S",
-          power: 26, health: 44, speed: 10,
-          attack_min: 9, attack_max: 12,
           emoji: "<:0020:1492696839106068711>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0020.png",
           special_attack: {
             name: "Diable Jambe",
-            min_atk: 18,
-            max_atk: 24,
             gif: "https://tenor.com/bPHBt.gif"
           },
           effect: "cut",
@@ -1798,8 +1525,6 @@ const consolidatedCardData = [
           id: "0224",
           attribute: "QCK",
           rank: "B",
-          power: 14, health: 24, speed: 5,
-          attack_min: 3, attack_max: 5,
           emoji: "<:0224:1492698130452578366>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/200/0224.png"
         },
@@ -1808,8 +1533,6 @@ const consolidatedCardData = [
           id: "0225",
           attribute: "QCK",
           rank: "A",
-          power: 17, health: 30, speed: 7,
-          attack_min: 5, attack_max: 8,
           emoji: "<:0225:1492699141003018340>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/200/0225.png"
         },
@@ -1818,8 +1541,6 @@ const consolidatedCardData = [
           id: "0419",
           attribute: "QCK",
           rank: "A",
-          power: 18, health: 32, speed: 8,
-          attack_min: 6, attack_max: 8,
           emoji: "<:0419:1492699817879666831>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/400/0419.png"
         },
@@ -1828,8 +1549,6 @@ const consolidatedCardData = [
           id: "0435",
           attribute: "QCK",
           rank: "B",
-          power: 13, health: 23, speed: 5,
-          attack_min: 3, attack_max: 5,
           emoji: "<:435:1492700841025736724>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/400/0435.png"
         },
@@ -1838,8 +1557,6 @@ const consolidatedCardData = [
           id: "0436",
           attribute: "QCK",
           rank: "A",
-          power: 17, health: 30, speed: 7,
-          attack_min: 5, attack_max: 8,
           emoji: "<:1000046913:1492702146972487762>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/400/0436.png"
         },
@@ -1848,8 +1565,6 @@ const consolidatedCardData = [
           id: "0521",
           attribute: "INT",
           rank: "A",
-          power: 18, health: 31, speed: 7,
-          attack_min: 5, attack_max: 8,
           emoji: "<:521:1492701594012356628>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0521.png"
         },
@@ -1858,8 +1573,6 @@ const consolidatedCardData = [
           id: "0522",
           attribute: "INT",
           rank: "S",
-          power: 27, health: 43, speed: 10,
-          attack_min: 9, attack_max: 12,
           emoji: "<:0522:1492702640147271872>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0522.png"
         },
@@ -1868,8 +1581,6 @@ const consolidatedCardData = [
           id: "0604",
           attribute: "DEX",
           rank: "A",
-          power: 18, health: 31, speed: 8,
-          attack_min: 6, attack_max: 8,
           emoji: "<:0604:1492703176552484984>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/600/0604.png"
         },
@@ -1878,8 +1589,6 @@ const consolidatedCardData = [
           id: "0605",
           attribute: "DEX",
           rank: "S",
-          power: 27, health: 44, speed: 10,
-          attack_min: 9, attack_max: 12,
           emoji: "<:0605:1492703787008393347>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/600/0605.png"
         },
@@ -1888,8 +1597,6 @@ const consolidatedCardData = [
           id: "0768",
           attribute: "PSY",
           rank: "A",
-          power: 18, health: 32, speed: 7,
-          attack_min: 5, attack_max: 8,
           emoji: "<:0768:1492704205067260025>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/700/0768.png"
         },
@@ -1898,8 +1605,6 @@ const consolidatedCardData = [
           id: "0911",
           attribute: "DEX",
           rank: "A",
-          power: 17, health: 30, speed: 7,
-          attack_min: 5, attack_max: 8,
           emoji: "<:911:1492704800348045414>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0911.png"
         },
@@ -1908,8 +1613,6 @@ const consolidatedCardData = [
           id: "0912",
           attribute: "DEX",
           rank: "S",
-          power: 27, health: 44, speed: 10,
-          attack_min: 9, attack_max: 12,
           emoji: "<:0912:1492705228900798484>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0912.png"
         },
@@ -1918,14 +1621,10 @@ const consolidatedCardData = [
           id: "4335",
           attribute: "QCK",
           rank: "UR",
-          power: 60, health: 80, speed: 20,
-          attack_min: 15, attack_max: 22,
           emoji: "<:1000048406:1498082145590313041>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/300/4335.png",
           special_attack: {
             name: "Shooting Star Soba Kick",
-            min_atk: 36,
-            max_atk: 50,
             gif: null
           },
           effect: "stun",
@@ -1936,8 +1635,6 @@ const consolidatedCardData = [
           id: "4470",
           attribute: "STR",
           rank: "S",
-          power: 24, health: 40, speed: 9,
-          attack_min: 7, attack_max: 10,
           emoji: "<:1000048407:1498083789128077403>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/400/4470.png"
         },
@@ -1946,8 +1643,6 @@ const consolidatedCardData = [
           id: "4435",
           attribute: "QCK",
           rank: "S",
-          power: 25, health: 40, speed: 9,
-          attack_min: 7, attack_max: 10,
           emoji: "<:1000048408:1498084056087265330>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/400/4435.png"
         },
@@ -1956,8 +1651,6 @@ const consolidatedCardData = [
           id: "4156",
           attribute: "PSY",
           rank: "S",
-          power: 24, health: 40, speed: 9,
-          attack_min: 7, attack_max: 10,
           emoji: "<:1000048409:1498084349382234232>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/100/4156.png"
         }
@@ -1972,8 +1665,6 @@ const consolidatedCardData = [
           id: "0021",
           attribute: "PSY",
           rank: "B",
-          power: 12, health: 20, speed: 3,
-          attack_min: 2, attack_max: 4,
           emoji: "<:0021:1492986160669003776>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0021.png"
         },
@@ -1982,14 +1673,10 @@ const consolidatedCardData = [
           id: "0022",
           attribute: "PSY",
           rank: "A",
-          power: 17, health: 30, speed: 6,
-          attack_min: 4, attack_max: 6,
           emoji: "<:0022:1492986611670192239>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0022.png",
           special_attack: {
             name: "Heavy point",
-            min_atk: 9,
-            max_atk: 12,
             gif: "https://files.catbox.moe/ka2rro.gif"
           },
           effect: "defenseup",
@@ -2001,14 +1688,10 @@ const consolidatedCardData = [
           id: "0023",
           attribute: "INT",
           rank: "A",
-          power: 17, health: 30, speed: 6,
-          attack_min: 4, attack_max: 6,
           emoji: "<:0023:1492993621761200218>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0023.png",
           special_attack: {
             name: "Brain point",
-            min_atk: 9,
-            max_atk: 12,
             gif: "https://files.catbox.moe/b6i8ap.gif"
           },
           effect: "prone",
@@ -2019,14 +1702,10 @@ const consolidatedCardData = [
           id: "0024",
           attribute: "STR",
           rank: "A",
-          power: 17, health: 30, speed: 6,
-          attack_min: 4, attack_max: 6,
           emoji: "<:0024:1492994983752368181>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0024.png",
           special_attack: {
             name: "Arm Point",
-            min_atk: 9,
-            max_atk: 12,
             gif: "https://files.catbox.moe/wekczr.gif"
           },
           effect: "attackup",
@@ -2038,14 +1717,10 @@ const consolidatedCardData = [
           id: "0025",
           attribute: "QCK",
           rank: "A",
-          power: 17, health: 30, speed: 6,
-          attack_min: 4, attack_max: 6,
           emoji: "<:0025:1492995638869360791>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0025.png",
           special_attack: {
             name: "Horn point",
-            min_atk: 9,
-            max_atk: 12,
             gif: "https://files.catbox.moe/acuej9.gif"
           },
           effect: "cut",
@@ -2056,14 +1731,10 @@ const consolidatedCardData = [
           id: "0026",
           attribute: "DEX",
           rank: "A",
-          power: 17, health: 30, speed: 6,
-          attack_min: 4, attack_max: 6,
           emoji: "<:0026:1492996588422037504>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0026.png",
           special_attack: {
             name: "Guard Point",
-            min_atk: 9,
-            max_atk: 12,
             gif: "https://files.catbox.moe/y3776u.gif"
           },
           effect: "reflect",
@@ -2075,8 +1746,6 @@ const consolidatedCardData = [
           id: "0247",
           attribute: "PSY",
           rank: "A",
-          power: 17, health: 30, speed: 6,
-          attack_min: 4, attack_max: 6,
           emoji: "<:0247:1492997210764214432>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/200/0247.png"
         },
@@ -2085,8 +1754,6 @@ const consolidatedCardData = [
           id: "0248",
           attribute: "STR",
           rank: "A",
-          power: 18, health: 32, speed: 6,
-          attack_min: 4, attack_max: 6,
           emoji: "<:0248:1492998812976025660>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/200/0248.png"
         },
@@ -2095,14 +1762,10 @@ const consolidatedCardData = [
           id: "0249",
           attribute: "STR",
           rank: "S",
-          power: 24, health: 42, speed: 9,
-          attack_min: 8, attack_max: 10,
           emoji: "<:0249:1492999758795640842>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/200/0249.png",
           special_attack: {
             name: "Monster Point",
-            min_atk: 18,
-            max_atk: 24,
             gif: "https://files.catbox.moe/7eg2wl.gif"
           },
           effect: "attackup",
@@ -2114,8 +1777,6 @@ const consolidatedCardData = [
           id: "0527",
           attribute: "DEX",
           rank: "A",
-          power: 19, health: 34, speed: 6,
-          attack_min: 5, attack_max: 8,
           emoji: "<:0527:1493001159814938788>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0527.png"
         },
@@ -2124,8 +1785,6 @@ const consolidatedCardData = [
           id: "0528",
           attribute: "DEX",
           rank: "S",
-          power: 40, health: 68, speed: 16,
-          attack_min: 14, attack_max: 18,
           emoji: "<:0528:1493005166910112044>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0528.png"
         },
@@ -2134,8 +1793,6 @@ const consolidatedCardData = [
           id: "0573",
           attribute: "PSY",
           rank: "B",
-          power: 14, health: 22, speed: 4,
-          attack_min: 4, attack_max: 6,
           emoji: "<:1000047005:1493005560197550223>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0573.png"
         },
@@ -2144,8 +1801,6 @@ const consolidatedCardData = [
           id: "0596",
           attribute: "STR",
           rank: "A",
-          power: 18, health: 30, speed: 6,
-          attack_min: 5, attack_max: 8,
           emoji: "<:0596:1493006221689622539>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0596.png"
         },
@@ -2154,8 +1809,6 @@ const consolidatedCardData = [
           id: "0597",
           attribute: "STR",
           rank: "S",
-          power: 26, health: 44, speed: 10,
-          attack_min: 8, attack_max: 12,
           emoji: "<:0597:1493006633079537704>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0597.png"
         },
@@ -2164,8 +1817,6 @@ const consolidatedCardData = [
           id: "0765",
           attribute: "INT",
           rank: "A",
-          power: 17, health: 30, speed: 6,
-          attack_min: 4, attack_max: 6,
           emoji: "<:0765:1493007061259124846>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/700/0765.png"
         },
@@ -2174,8 +1825,6 @@ const consolidatedCardData = [
           id: "0854",
           attribute: "DEX",
           rank: "A",
-          power: 17, health: 32, speed: 6,
-          attack_min: 5, attack_max: 8,
           emoji: "<:0854:1493007416353357834>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/800/0854.png"
         },
@@ -2184,14 +1833,10 @@ const consolidatedCardData = [
           id: "0868",
           attribute: "STR",
           rank: "S",
-          power: 24, health: 42, speed: 9,
-          attack_min: 8, attack_max: 10,
           emoji: "<:868:1493007763654054019>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/800/0868.png",
           special_attack: {
             name: "Heavy Gong",
-            min_atk: 18,
-            max_atk: 24,
             gif: "https://files.catbox.moe/ybhnh7.gif"
           },
           effect: "attackup",
@@ -2203,8 +1848,6 @@ const consolidatedCardData = [
           id: "0909",
           attribute: "PSY",
           rank: "A",
-          power: 17, health: 30, speed: 6,
-          attack_min: 4, attack_max: 6,
           emoji: "<:0909:1493008837404397788>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0909.png"
         },
@@ -2213,8 +1856,6 @@ const consolidatedCardData = [
           id: "0910",
           attribute: "PSY",
           rank: "S",
-          power: 26, health: 44, speed: 10,
-          attack_min: 8, attack_max: 12,
           emoji: "<:1000047013:1493009299583013135>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0910.png"
         },
@@ -2223,8 +1864,6 @@ const consolidatedCardData = [
           id: "4369",
           attribute: "PSY",
           rank: "S",
-          power: 20, health: 32, speed: 7,
-          attack_min: 5, attack_max: 8,
           emoji: "<:1000048418:1498088835748335817>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/300/4369.png"
         },
@@ -2233,14 +1872,10 @@ const consolidatedCardData = [
           id: "4182",
           attribute: "INT",
           rank: "SS",
-          power: 44, health: 68, speed: 14,
-          attack_min: 12, attack_max: 16,
           emoji: "<:1000048416:1498088118107115722>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/100/4182.png",
           special_attack: {
             name: "Chopper's Miracle Cure",
-            min_atk: 28,
-            max_atk: 36,
             gif: null
           },
           effect: "regen",
@@ -2253,8 +1888,6 @@ const consolidatedCardData = [
           id: "4148",
           attribute: "INT",
           rank: "S",
-          power: 18, health: 32, speed: 6,
-          attack_min: 4, attack_max: 6,
           emoji: "<:1000048417:1498088731159171164>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/100/4148.png"
         },
@@ -2263,8 +1896,6 @@ const consolidatedCardData = [
           id: "4086",
           attribute: "INT",
           rank: "S",
-          power: 18, health: 32, speed: 6,
-          attack_min: 4, attack_max: 6,
           emoji: "<:1000048419:1498089259708452915>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/000/4086.png"
         }
@@ -2279,8 +1910,6 @@ const consolidatedCardData = [
           id: "0210",
           attribute: "INT",
           rank: "S",
-          power: 24, health: 38, speed: 9,
-          attack_min: 7, attack_max: 9,
           emoji: "<:0210:1493012364998475878>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/200/0210.png"
         },
@@ -2289,8 +1918,6 @@ const consolidatedCardData = [
           id: "0514",
           attribute: "INT",
           rank: "A",
-          power: 18, health: 30, speed: 6,
-          attack_min: 5, attack_max: 7,
           emoji: "<:0514:1493012748517511238>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0514.png"
         },
@@ -2299,8 +1926,6 @@ const consolidatedCardData = [
           id: "0531",
           attribute: "DEX",
           rank: "A",
-          power: 18, health: 32, speed: 7,
-          attack_min: 5, attack_max: 8,
           emoji: "<:0531:1493013069981286520>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0531.png"
         },
@@ -2309,8 +1934,6 @@ const consolidatedCardData = [
           id: "0532",
           attribute: "DEX",
           rank: "S",
-          power: 27, health: 44, speed: 10,
-          attack_min: 9, attack_max: 12,
           emoji: "<:0532:1493013458013126706>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0532.png"
         },
@@ -2319,8 +1942,6 @@ const consolidatedCardData = [
           id: "0557",
           attribute: "INT",
           rank: "A",
-          power: 18, health: 31, speed: 7,
-          attack_min: 5, attack_max: 8,
           emoji: "<:0557:1493013823643324466>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0557.png"
         },
@@ -2329,8 +1950,6 @@ const consolidatedCardData = [
           id: "0558",
           attribute: "INT",
           rank: "S",
-          power: 40, health: 68, speed: 16,
-          attack_min: 14, attack_max: 18,
           emoji: "<:0558:1493016421129654353>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0558.png"
         },
@@ -2339,8 +1958,6 @@ const consolidatedCardData = [
           id: "0678",
           attribute: "PSY",
           rank: "A",
-          power: 18, health: 31, speed: 7,
-          attack_min: 5, attack_max: 8,
           emoji: "<:0678:1493016867672166460>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/600/0678.png"
         },
@@ -2349,8 +1966,6 @@ const consolidatedCardData = [
           id: "0679",
           attribute: "PSY",
           rank: "S",
-          power: 27, health: 43, speed: 10,
-          attack_min: 9, attack_max: 12,
           emoji: "<:0679:1493017338260230345>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/600/0679.png"
         },
@@ -2359,8 +1974,6 @@ const consolidatedCardData = [
           id: "0682",
           attribute: "PSY",
           rank: "A",
-          power: 18, health: 32, speed: 8,
-          attack_min: 6, attack_max: 8,
           emoji: "<:0682:1493017709862977797>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/600/0682.png"
         },
@@ -2369,8 +1982,6 @@ const consolidatedCardData = [
           id: "0683",
           attribute: "PSY",
           rank: "S",
-          power: 27, health: 44, speed: 11,
-          attack_min: 9, attack_max: 12,
           emoji: "<:0683:1493018376400932944>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/600/0683.png"
         },
@@ -2379,8 +1990,6 @@ const consolidatedCardData = [
           id: "0708",
           attribute: "PSY",
           rank: "B",
-          power: 13, health: 22, speed: 4,
-          attack_min: 3, attack_max: 5,
           emoji: "<:0708:1493018796955402300>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/700/0708.png"
         },
@@ -2389,8 +1998,6 @@ const consolidatedCardData = [
           id: "0709",
           attribute: "PSY",
           rank: "A",
-          power: 18, health: 32, speed: 7,
-          attack_min: 5, attack_max: 8,
           emoji: "<:0709:1493019102367846430>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/700/0709.png"
         },
@@ -2399,8 +2006,6 @@ const consolidatedCardData = [
           id: "0767",
           attribute: "DEX",
           rank: "A",
-          power: 18, health: 32, speed: 7,
-          attack_min: 5, attack_max: 8,
           emoji: "<:0767:1493019453775151416>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/700/0767.png"
         },
@@ -2409,14 +2014,10 @@ const consolidatedCardData = [
           id: "0866",
           attribute: "INT",
           rank: "A",
-          power: 17, health: 30, speed: 6,
-          attack_min: 4, attack_max: 7,
           emoji: "<:0866:1493019896374624256>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/800/0866.png",
           special_attack: {
             name: "Cien Fleur",
-            min_atk: 9,
-            max_atk: 13,
             gif: "https://files.catbox.moe/vrhbn8.gif"
           },
           effect: "stun",
@@ -2427,8 +2028,6 @@ const consolidatedCardData = [
           id: "0907",
           attribute: "INT",
           rank: "A",
-          power: 18, health: 32, speed: 7,
-          attack_min: 5, attack_max: 8,
           emoji: "<:0907:1493021561618174053>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0907.png"
         },
@@ -2437,8 +2036,6 @@ const consolidatedCardData = [
           id: "0908",
           attribute: "INT",
           rank: "S",
-          power: 26, health: 44, speed: 10,
-          attack_min: 9, attack_max: 12,
           emoji: "<:0908:1493021999008710778>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0908.png"
         },
@@ -2447,8 +2044,6 @@ const consolidatedCardData = [
           id: "0915",
           attribute: "QCK",
           rank: "A",
-          power: 18, health: 31, speed: 7,
-          attack_min: 5, attack_max: 8,
           emoji: "<:0915:1493022383118745620>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0915.png"
         },
@@ -2457,8 +2052,6 @@ const consolidatedCardData = [
           id: "0916",
           attribute: "QCK",
           rank: "S",
-          power: 26, health: 44, speed: 10,
-          attack_min: 9, attack_max: 12,
           emoji: "<:0916:1493022711621091530>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0916.png"
         },
@@ -2467,14 +2060,10 @@ const consolidatedCardData = [
           id: "4514",
           attribute: "DEX",
           rank: "SS",
-          power: 44, health: 68, speed: 14,
-          attack_min: 12, attack_max: 16,
           emoji: "<:1000048410:1498085046274359428>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/500/4514.png",
           special_attack: {
             name: "Mi Fleurs Gigantesco Mano of the Geisha",
-            min_atk: 28,
-            max_atk: 36,
             gif: null
           },
           effect: "stun",
@@ -2485,8 +2074,6 @@ const consolidatedCardData = [
           id: "4513",
           attribute: "DEX",
           rank: "S",
-          power: 24, health: 40, speed: 9,
-          attack_min: 7, attack_max: 10,
           emoji: "<:1000048411:1498085879179120861>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/500/4513.png"
         },
@@ -2495,8 +2082,6 @@ const consolidatedCardData = [
           id: "4375",
           attribute: "PSY",
           rank: "S",
-          power: 24, health: 40, speed: 9,
-          attack_min: 7, attack_max: 10,
           emoji: "<:1000048412:1498086207496654998>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/300/4375.png"
         },
@@ -2505,14 +2090,10 @@ const consolidatedCardData = [
           id: "4187",
           attribute: "PSY",
           rank: "SS",
-          power: 44, health: 68, speed: 14,
-          attack_min: 12, attack_max: 16,
           emoji: "<:1000048413:1498086488179736626>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/100/4187.png",
           special_attack: {
             name: "Mother's Hands",
-            min_atk: 28,
-            max_atk: 36,
             gif: null
           },
           effect: "stun",
@@ -2523,8 +2104,6 @@ const consolidatedCardData = [
           id: "4158",
           attribute: "DEX",
           rank: "S",
-          power: 18, health: 32, speed: 7,
-          attack_min: 5, attack_max: 8,
           emoji: "<:1000048414:1498087190960279572>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/100/4158.png"
         },
@@ -2533,8 +2112,6 @@ const consolidatedCardData = [
           id: "4094",
           attribute: "PSY",
           rank: "S",
-          power: 18, health: 32, speed: 7,
-          attack_min: 5, attack_max: 8,
           emoji: "<:1000048415:1498087542090895370>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/000/4094.png"
         }
@@ -2549,8 +2126,6 @@ const consolidatedCardData = [
           id: "0336",
           attribute: "PSY",
           rank: "B",
-          power: 13, health: 32, speed: 3,
-          attack_min: 2, attack_max: 3,
           emoji: "<:0336:1493023840886853683>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/300/0336.png"
         },
@@ -2559,8 +2134,6 @@ const consolidatedCardData = [
           id: "0337",
           attribute: "INT",
           rank: "A",
-          power: 18, health: 45, speed: 5,
-          attack_min: 3, attack_max: 4,
           emoji: "<:0337:1493024139940987102>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/300/0337.png"
         },
@@ -2569,8 +2142,6 @@ const consolidatedCardData = [
           id: "0559",
           attribute: "STR",
           rank: "A",
-          power: 19, health: 34, speed: 6,
-          attack_min: 5, attack_max: 8,
           emoji: "<:0559:1493024447639322695>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0559.png"
         },
@@ -2579,8 +2150,6 @@ const consolidatedCardData = [
           id: "0560",
           attribute: "STR",
           rank: "S",
-          power: 40, health: 68, speed: 16,
-          attack_min: 14, attack_max: 18,
           emoji: "<:0560:1493024749889126600>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0560.png"
         },
@@ -2589,8 +2158,6 @@ const consolidatedCardData = [
           id: "0710",
           attribute: "PSY",
           rank: "A",
-          power: 18, health: 31, speed: 8,
-          attack_min: 6, attack_max: 8,
           emoji: "<:0710:1493026418110496950>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/700/0710.png"
         },
@@ -2599,8 +2166,6 @@ const consolidatedCardData = [
           id: "0711",
           attribute: "PSY",
           rank: "S",
-          power: 26, health: 44, speed: 10,
-          attack_min: 9, attack_max: 12,
           emoji: "<:0711:1493026895196061989>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/700/0711.png"
         },
@@ -2609,8 +2174,6 @@ const consolidatedCardData = [
           id: "0739",
           attribute: "INT",
           rank: "A",
-          power: 18, health: 32, speed: 7,
-          attack_min: 6, attack_max: 8,
           emoji: "<:0739:1493027324327624814>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/700/0739.png"
         },
@@ -2619,8 +2182,6 @@ const consolidatedCardData = [
           id: "0763",
           attribute: "STR",
           rank: "A",
-          power: 18, health: 32, speed: 7,
-          attack_min: 6, attack_max: 8,
           emoji: "<:0763:1493027666830557224>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/700/0763.png"
         },
@@ -2629,8 +2190,6 @@ const consolidatedCardData = [
           id: "0900",
           attribute: "DEX",
           rank: "A",
-          power: 18, health: 31, speed: 8,
-          attack_min: 6, attack_max: 8,
           emoji: "<:1000047047:1493029241028349992>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0900.png"
         },
@@ -2639,14 +2198,10 @@ const consolidatedCardData = [
           id: "0901",
           attribute: "DEX",
           rank: "S",
-          power: 26, health: 44, speed: 10,
-          attack_min: 8, attack_max: 12,
           emoji: "<:901:1493029758236365042>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0901.png",
           special_attack: {
             name: "Centauros",
-            min_atk: 18,
-            max_atk: 24,
             gif: null
           },
           effect: "attackup",
@@ -2658,8 +2213,6 @@ const consolidatedCardData = [
           id: "0942",
           attribute: "STR",
           rank: "A",
-          power: 18, health: 32, speed: 8,
-          attack_min: 6, attack_max: 8,
           emoji: "<:1000047050:1493031080935166215>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0942.png"
         },
@@ -2668,14 +2221,10 @@ const consolidatedCardData = [
           id: "0943",
           attribute: "STR",
           rank: "S",
-          power: 40, health: 68, speed: 16,
-          attack_min: 14, attack_max: 18,
           emoji: "<:1000047051:1493031747603009688>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0943.png",
           special_attack: {
             name: "Baldimore",
-            min_atk: 28,
-            max_atk: 36,
             gif: null
           },
           effect: "attackup",
@@ -2687,14 +2236,10 @@ const consolidatedCardData = [
           id: "4425",
           attribute: "QCK",
           rank: "SS",
-          power: 45, health: 68, speed: 14,
-          attack_min: 12, attack_max: 16,
           emoji: "<:1000048420:1498089500893515899>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/400/4425.png",
           special_attack: {
             name: "Benefactor-Protecting Radical Beam",
-            min_atk: 28,
-            max_atk: 36,
             gif: null
           },
           effect: "stun",
@@ -2705,8 +2250,6 @@ const consolidatedCardData = [
           id: "4370",
           attribute: "PSY",
           rank: "S",
-          power: 24, health: 40, speed: 9,
-          attack_min: 7, attack_max: 10,
           emoji: "<:1000048421:1498090222443954246>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/300/4370.png"
         },
@@ -2715,8 +2258,6 @@ const consolidatedCardData = [
           id: "4309",
           attribute: "DEX",
           rank: "S",
-          power: 24, health: 40, speed: 9,
-          attack_min: 7, attack_max: 10,
           emoji: "<:1000048422:1498090459455688764>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/300/4309.png"
         },
@@ -2725,14 +2266,10 @@ const consolidatedCardData = [
           id: "4193",
           attribute: "DEX",
           rank: "SS",
-          power: 44, health: 66, speed: 14,
-          attack_min: 12, attack_max: 16,
           emoji: "<:1000048423:1498090659134050315>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/100/4193.png",
           special_attack: {
             name: "Weapon Left",
-            min_atk: 28,
-            max_atk: 36,
             gif: null
           },
           effect: "stun",
@@ -2743,8 +2280,6 @@ const consolidatedCardData = [
           id: "4168",
           attribute: "DEX",
           rank: "S",
-          power: 18, health: 32, speed: 7,
-          attack_min: 6, attack_max: 8,
           emoji: "<:1000048424:1498091036604498111>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/100/4168.png"
         },
@@ -2753,8 +2288,6 @@ const consolidatedCardData = [
           id: "4076",
           attribute: "QCK",
           rank: "S",
-          power: 18, health: 32, speed: 7,
-          attack_min: 6, attack_max: 8,
           emoji: "<:1000048425:1498091339332452485>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/000/4076.png"
         }
@@ -2769,8 +2302,6 @@ const consolidatedCardData = [
           id: "0423",
           attribute: "QCK",
           rank: "B",
-          power: 13, health: 22, speed: 4,
-          attack_min: 2, attack_max: 4,
           emoji: "<:1000047052:1493032674464501930>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/400/0423.png"
         },
@@ -2779,8 +2310,6 @@ const consolidatedCardData = [
           id: "0424",
           attribute: "QCK",
           rank: "A",
-          power: 18, health: 30, speed: 7,
-          attack_min: 5, attack_max: 8,
           emoji: "<:1000047053:1493032871219429396>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/400/0424.png"
         },
@@ -2789,8 +2318,6 @@ const consolidatedCardData = [
           id: "0525",
           attribute: "PSY",
           rank: "A",
-          power: 18, health: 31, speed: 7,
-          attack_min: 5, attack_max: 8,
           emoji: "<:1000047054:1493033135116652574>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0525.png"
         },
@@ -2799,8 +2326,6 @@ const consolidatedCardData = [
           id: "0526",
           attribute: "PSY",
           rank: "S",
-          power: 40, health: 68, speed: 16,
-          attack_min: 14, attack_max: 18,
           emoji: "<:1000047055:1493033567696191588>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0526.png"
         },
@@ -2809,8 +2334,6 @@ const consolidatedCardData = [
           id: "0533",
           attribute: "QCK",
           rank: "A",
-          power: 18, health: 32, speed: 8,
-          attack_min: 6, attack_max: 8,
           emoji: "<:1000047056:1493033870109704323>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0533.png"
         },
@@ -2819,8 +2342,6 @@ const consolidatedCardData = [
           id: "0534",
           attribute: "QCK",
           rank: "S",
-          power: 27, health: 44, speed: 10,
-          attack_min: 9, attack_max: 12,
           emoji: "<:1000047057:1493034323497193593>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0534.png"
         },
@@ -2829,8 +2350,6 @@ const consolidatedCardData = [
           id: "0612",
           attribute: "DEX",
           rank: "A",
-          power: 18, health: 31, speed: 8,
-          attack_min: 6, attack_max: 8,
           emoji: "<:1000047058:1493034639747453078>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/600/0612.png"
         },
@@ -2839,8 +2358,6 @@ const consolidatedCardData = [
           id: "0613",
           attribute: "DEX",
           rank: "S",
-          power: 27, health: 43, speed: 10,
-          attack_min: 9, attack_max: 12,
           emoji: "<:1000047059:1493034990613823528>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/600/0613.png"
         },
@@ -2849,8 +2366,6 @@ const consolidatedCardData = [
           id: "0769",
           attribute: "INT",
           rank: "A",
-          power: 18, health: 32, speed: 7,
-          attack_min: 4, attack_max: 7,
           emoji: "<:1000047060:1493035322160971796>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/700/0769.png"
         },
@@ -2859,8 +2374,6 @@ const consolidatedCardData = [
           id: "0895",
           attribute: "DEX",
           rank: "B",
-          power: 14, health: 22, speed: 4,
-          attack_min: 3, attack_max: 5,
           emoji: "<:1000047061:1493035641871667210>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/800/0895.png"
         },
@@ -2869,8 +2382,6 @@ const consolidatedCardData = [
           id: "0896",
           attribute: "DEX",
           rank: "A",
-          power: 18, health: 32, speed: 8,
-          attack_min: 6, attack_max: 8,
           emoji: "<:1000047062:1493036063474712659>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/800/0896.png"
         },
@@ -2879,8 +2390,6 @@ const consolidatedCardData = [
           id: "0913",
           attribute: "QCK",
           rank: "A",
-          power: 18, health: 32, speed: 8,
-          attack_min: 6, attack_max: 8,
           emoji: "<:1000047063:1493036498809782443>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0913.png"
         },
@@ -2889,8 +2398,6 @@ const consolidatedCardData = [
           id: "0914",
           attribute: "QCK",
           rank: "S",
-          power: 27, health: 44, speed: 10,
-          attack_min: 9, attack_max: 12,
           emoji: "<:1000047064:1493037102730973305>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0914.png"
         },
@@ -2899,14 +2406,10 @@ const consolidatedCardData = [
           id: "4426",
           attribute: "PSY",
           rank: "SS",
-          power: 44, health: 68, speed: 14,
-          attack_min: 12, attack_max: 16,
           emoji: "<:1000048426:1498091761946464366>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/400/4426.png",
           special_attack: {
             name: "Freezing Slash",
-            min_atk: 28,
-            max_atk: 36,
             gif: null
           },
           effect: "stun",
@@ -2917,8 +2420,6 @@ const consolidatedCardData = [
           id: "4372",
           attribute: "QCK",
           rank: "S",
-          power: 24, health: 40, speed: 9,
-          attack_min: 7, attack_max: 10,
           emoji: "<:1000048427:1498092145570222110>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/300/4372.png"
         },
@@ -2927,14 +2428,10 @@ const consolidatedCardData = [
           id: "4197",
           attribute: "INT",
           rank: "SS",
-          power: 44, health: 68, speed: 14,
-          attack_min: 12, attack_max: 16,
           emoji: "<:1000048428:1498092550656098444>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/100/4197.png",
           special_attack: {
             name: "Aube Coup Droit",
-            min_atk: 28,
-            max_atk: 36,
             gif: null
           },
           effect: "stun",
@@ -2945,8 +2442,6 @@ const consolidatedCardData = [
           id: "4310",
           attribute: "DEX",
           rank: "S",
-          power: 24, health: 40, speed: 9,
-          attack_min: 7, attack_max: 10,
           emoji: "<:1000048429:1498092949194543254>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/300/4310.png"
         },
@@ -2955,8 +2450,6 @@ const consolidatedCardData = [
           id: "4169",
           attribute: "INT",
           rank: "S",
-          power: 18, health: 32, speed: 7,
-          attack_min: 4, attack_max: 7,
           emoji: "<:1000048430:1498093275800801410>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/100/4169.png"
         },
@@ -2965,8 +2458,6 @@ const consolidatedCardData = [
           id: "4091",
           attribute: "INT",
           rank: "S",
-          power: 18, health: 32, speed: 7,
-          attack_min: 4, attack_max: 7,
           emoji: "<:1000048431:1498093551475494922>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/000/4091.png"
         }
@@ -2981,8 +2472,6 @@ const consolidatedCardData = [
           id: "0409",
           attribute: "QCK",
           rank: "A",
-          power: 18, health: 33, speed: 5,
-          attack_min: 3, attack_max: 5,
           emoji: "<:1000047065:1493039454246666370>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/400/0409.png"
         },
@@ -2991,8 +2480,6 @@ const consolidatedCardData = [
           id: "0885",
           attribute: "PSY",
           rank: "A",
-          power: 18, health: 32, speed: 8,
-          attack_min: 6, attack_max: 8,
           emoji: "<:1000047067:1493040692216467546>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/800/0885.png"
         },
@@ -3001,8 +2488,6 @@ const consolidatedCardData = [
           id: "0934",
           attribute: "INT",
           rank: "S",
-          power: 28, health: 60, speed: 10,
-          attack_min: 6, attack_max: 8,
           emoji: "<:1000047068:1493040998136156251>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0934.png"
         },
@@ -3011,14 +2496,10 @@ const consolidatedCardData = [
           id: "0935",
           attribute: "INT",
           rank: "SS",
-          power: 40, health: 65, speed: 15,
-          attack_min: 12, attack_max: 16,
           emoji: "<:1000047069:1493045625392988292>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0935.png",
           special_attack: {
             name: "Fishman Karatee!! Shark fist tile breaker",
-            min_atk: 24,
-            max_atk: 32,
             gif: null
           },
           effect: "confusion",
@@ -3029,8 +2510,6 @@ const consolidatedCardData = [
           id: "4530",
           attribute: "DEX",
           rank: "S",
-          power: 25, health: 40, speed: 9,
-          attack_min: 7, attack_max: 10,
           emoji: "<:1000048432:1498093937376624810>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/500/4530.png"
         },
@@ -3039,14 +2518,10 @@ const consolidatedCardData = [
           id: "4431",
           attribute: "PSY",
           rank: "SS",
-          power: 44, health: 68, speed: 14,
-          attack_min: 12, attack_max: 16,
           emoji: "<:1000048434:1498096131580624940>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/400/4431.png",
           special_attack: {
             name: "Seven Thousand Tile Roundhouse Kick",
-            min_atk: 28,
-            max_atk: 36,
             gif: null
           },
           effect: "attackup",
@@ -3063,8 +2538,6 @@ const consolidatedCardData = [
           id: "0072",
           attribute: "PSY",
           rank: "A",
-          power: 16, health: 28, speed: 4,
-          attack_min: 4, attack_max: 6,
           emoji: "<:1000048916:1499848586807218247>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0072.png"
         },
@@ -3072,8 +2545,6 @@ const consolidatedCardData = [
           id: "0073",
           attribute: "PSY",
           rank: "S",
-          power: 24, health: 46, speed: 9,
-          attack_min: 8, attack_max: 12,
           emoji: "<:1000048917:1499849013107888268>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0073.png"
         },
@@ -3082,8 +2553,6 @@ const consolidatedCardData = [
           id: "0725",
           attribute: "QCK",
           rank: "A",
-          power: 17, health: 29, speed: 6,
-          attack_min: 4, attack_max: 7,
           emoji: "<:1000048923:1499851593976385677>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/700/0725.png"
         },
@@ -3092,8 +2561,6 @@ const consolidatedCardData = [
           id: "0726",
           attribute: "QCK",
           rank: "S",
-          power: 25, health: 42, speed: 9,
-          attack_min: 8, attack_max: 11,
           emoji: "<:1000048924:1499851901993353337>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/700/0726.png"
         },
@@ -3102,8 +2569,6 @@ const consolidatedCardData = [
           id: "5030",
           attribute: "DEX",
           rank: "S",
-          power: 26, health: 44, speed: 10,
-          attack_min: 9, attack_max: 12,
           emoji: "<:1000048925:1499856450095153222>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/5/000/5030.png"
         },
@@ -3112,8 +2577,6 @@ const consolidatedCardData = [
           id: "5029",
           attribute: "DEX",
           rank: "A",
-          power: 18, health: 33, speed: 5,
-          attack_min: 4, attack_max: 7,
           emoji: "<:1000048926:1499856695655141386>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/5/000/5029.png"
         }
@@ -3127,8 +2590,6 @@ const consolidatedCardData = [
           id: "9000",
           attribute: "PSY",
           rank: "S",
-          power: 25, health: 40, speed: 9,
-          attack_min: 8, attack_max: 11,
           emoji: "<:1000048933:1499901301109293066>",
           image_url: "https://static.wikia.nocookie.net/onepiece/images/9/9b/Zeus_Anime_Infobox.png/revision/latest/scale-to-width-down/1000?cb=20220602000228"
         },
@@ -3137,14 +2598,10 @@ const consolidatedCardData = [
           id: "9001",
           attribute: "STR",
           rank: "SS",
-          power: 40, health: 72, speed: 16,
-          attack_min: 12, attack_max: 18,
           emoji: "<:1000048942:1499903572559527946>",
           image_url: "https://static.wikia.nocookie.net/onepiece/images/a/a8/Darken_Zeus_While_Attacking.png/revision/latest/scale-to-width-down/1000?cb=20180107062950",
           special_attack: {
             name: "Thunderbolt",
-            min_atk: 30,
-            max_atk: 48,
             gif: null
           },
           effect: "stun",
@@ -3160,8 +2617,6 @@ const consolidatedCardData = [
           id: "0444",
           attribute: "PSY",
           rank: "B",
-          power: 12, health: 18, speed: 3,
-          attack_min: 0, attack_max: 0,
           emoji: "<:1000048943:1499904851587371038>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/400/0444.png",
           boost: "Nerfeltari Vivi (10%)",
@@ -3177,8 +2632,6 @@ const consolidatedCardData = [
           id: "3700",
           attribute: "QCK",
           rank: "S",
-          power: 22, health: 38, speed: 8,
-          attack_min: 0, attack_max: 0,
           emoji: "<:1000048962:1499950664132984892>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/700/3700.png",
           boost: "Strawhat Pirates (5%)",
@@ -3200,8 +2653,6 @@ const consolidatedCardData = [
           id: "0547",
           attribute: "STR",
           rank: "A",
-          power: 18, health: 33, speed: 6,
-          attack_min: 5, attack_max: 8,
           emoji: "<:0547:1492521943084302366>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0547.png"
         },
@@ -3210,8 +2661,6 @@ const consolidatedCardData = [
           id: "0548",
           attribute: "STR",
           rank: "S",
-          power: 24, health: 41, speed: 9,
-          attack_min: 7, attack_max: 10,
           emoji: "<:0548:1492523207889260544>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0548.png"
         }
@@ -3226,8 +2675,6 @@ const consolidatedCardData = [
           id: "0629",
           attribute: "INT",
           rank: "B",
-          power: 15, health: 22, speed: 3,
-          attack_min: 2, attack_max: 5,
           emoji: "<:0629:1493025115762589906>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/600/0629.png"
         },
@@ -3236,8 +2683,6 @@ const consolidatedCardData = [
           id: "0849",
           attribute: "STR",
           rank: "B",
-          power: 14, health: 22, speed: 4,
-          attack_min: 3, attack_max: 5,
           emoji: "<:0849:1493028080355119134>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/800/0849.png"
         }
@@ -3252,8 +2697,6 @@ const consolidatedCardData = [
           id: "0410",
           attribute: "QCK",
           rank: "S",
-          power: 28, health: 60, speed: 10,
-          attack_min: 6, attack_max: 8,
           emoji: "<:1000047066:1493040336342220850>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/400/0410.png"
         }
@@ -3268,8 +2711,6 @@ const consolidatedCardData = [
           id: "0439",
           attribute: "PSY",
           rank: "A",
-          power: 16, health: 28, speed: 4,
-          attack_min: 4, attack_max: 6,
           emoji: "<:1000048918:1499849203336347759>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/400/0439.png"
         },
@@ -3278,8 +2719,6 @@ const consolidatedCardData = [
           id: "0440",
           attribute: "PSY",
           rank: "S",
-          power: 22, health: 38, speed: 7,
-          attack_min: 7, attack_max: 9,
           emoji: "<:1000048919:1499849956570173551>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/400/0440.png"
         },
@@ -3288,8 +2727,6 @@ const consolidatedCardData = [
           id: "0663",
           attribute: "PSY",
           rank: "B",
-          power: 13, health: 20, speed: 3,
-          attack_min: 3, attack_max: 4,
           emoji: "<:1000048920:1499850265119948810>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/600/0663.png"
         },
@@ -3298,8 +2735,6 @@ const consolidatedCardData = [
           id: "0664",
           attribute: "PSY",
           rank: "A",
-          power: 17, health: 30, speed: 5,
-          attack_min: 4, attack_max: 7,
           emoji: "<:1000048921:1499850573040713768>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/600/0664.png"
         },
@@ -3308,8 +2743,6 @@ const consolidatedCardData = [
           id: "0686",
           attribute: "QCK",
           rank: "A",
-          power: 16, health: 27, speed: 6,
-          attack_min: 3, attack_max: 6,
           emoji: "<:1000048922:1499851076130832464>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/600/0686.png"
         },
@@ -3318,19 +2751,15 @@ const consolidatedCardData = [
           id: "4271",
           attribute: "QCK",
           rank: "S",
-          power: 24, health: 40, speed: 9,
-          attack_min: 8, attack_max: 11,
-          count: 2,
           emoji: "<:1000048927:1499857297445359749>",
-          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/200/4271.png"
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/200/4271.png",
+          count: 2
         },
         {
           title: "Memories of Alabasta",
           id: "4238",
           attribute: "DEX",
           rank: "SS",
-          power: 36, health: 60, speed: 12,
-          attack_min: 0, attack_max: 0,
           emoji: "<:1000048928:1499857587431280822>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/200/4238.png",
           boost: "Strawhat Pirates (3%)",
@@ -3346,24 +2775,18 @@ const consolidatedCardData = [
           id: "4025",
           attribute: "PSY",
           rank: "S",
-          power: 22, health: 38, speed: 8,
-          attack_min: 7, attack_max: 10,
-          count: 3,
           emoji: "<:1000048963:1499951101024403586>",
-          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/000/4025.png"
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/000/4025.png",
+          count: 3
         },
         {
           id: "4033",
           attribute: "PSY",
           rank: "SS",
-          power: 38, health: 68, speed: 14,
-          attack_min: 11, attack_max: 16,
           emoji: "<:1000048964:1499951561810645094>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/000/4033.png",
           special_attack: {
             name: "Dashing little ones",
-            min_atk: 30,
-            max_atk: 38,
             gif: null
           },
           effect: "confusion",
@@ -3385,8 +2808,6 @@ const consolidatedCardData = [
           id: "0209",
           attribute: "INT",
           rank: "A",
-          power: 16, health: 28, speed: 3,
-          attack_min: 3, attack_max: 4,
           emoji: "<:0209:1493010298750107689>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/200/0209.png"
         }
@@ -3401,8 +2822,6 @@ const consolidatedCardData = [
           id: "0071",
           attribute: "PSY",
           rank: "B",
-          power: 13, health: 22, speed: 2,
-          attack_min: 2, attack_max: 4,
           emoji: "<:1000048915:1499845759233953842>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0071.png"
         }
@@ -3421,8 +2840,6 @@ const consolidatedCardData = [
           id: "3176",
           attribute: "PSY",
           rank: "S",
-          power: 26, health: 42, speed: 10,
-          attack_min: 8, attack_max: 11,
           emoji: "<:1000051509:1506032208522121247>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/100/3176.png"
         },
@@ -3431,14 +2848,10 @@ const consolidatedCardData = [
           id: "3177",
           attribute: "PSY",
           rank: "SS",
-          power: 36, health: 60, speed: 14,
-          attack_min: 14, attack_max: 18,
           emoji: "<:1000051510:1506032443206144222>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/100/3177.png",
           special_attack: {
             name: "God of Fire Ace",
-            min_atk: 30,
-            max_atk: 42,
             gif: null
           },
           effect: "attackup",
@@ -3450,8 +2863,6 @@ const consolidatedCardData = [
           id: "3626",
           attribute: "DEX",
           rank: "S",
-          power: 24, health: 44, speed: 11,
-          attack_min: 9, attack_max: 12,
           emoji: "<:1000051511:1506033038490996917>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/600/3626.png"
         },
@@ -3460,14 +2871,10 @@ const consolidatedCardData = [
           id: "3627",
           attribute: "DEX",
           rank: "SS",
-          power: 38, health: 62, speed: 15,
-          attack_min: 14, attack_max: 18,
           emoji: "<:1000051512:1506033313981136947>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/600/3627.png",
           special_attack: {
             name: "God of Fire Ace",
-            min_atk: 32,
-            max_atk: 44,
             gif: null
           },
           effect: "attackup",
@@ -3479,14 +2886,10 @@ const consolidatedCardData = [
           id: "3786",
           attribute: "PSY",
           rank: "UR",
-          power: 60, health: 90, speed: 22,
-          attack_min: 20, attack_max: 30,
           emoji: "<:1000051513:1506033775794978826>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/700/3786.png",
           special_attack: {
             name: "Divine Departure",
-            min_atk: 50,
-            max_atk: 70,
             gif: null
           },
           effect: "attackup",
@@ -3498,8 +2901,6 @@ const consolidatedCardData = [
           id: "3885",
           attribute: "QCK",
           rank: "S",
-          power: 26, health: 46, speed: 11,
-          attack_min: 9, attack_max: 12,
           emoji: "<:1000051514:1506034071191556126>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/800/3885.png"
         },
@@ -3508,45 +2909,35 @@ const consolidatedCardData = [
           id: "4057",
           attribute: "QCK",
           rank: "S",
-          power: 26, health: 44, speed: 10,
-          attack_min: 12, attack_max: 20,
-          count: 2,
           emoji: "<:1000051515:1506034344274428075>",
-          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/000/4057.png"
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/000/4057.png",
+          count: 2
         },
         {
           title: "Roger & Oden - Remarkable grand adventure",
           id: "4058",
           attribute: "QCK",
           rank: "SS",
-          power: 38, health: 64, speed: 16,
-          attack_min: 20, attack_max: 36,
-          count: 2,
           emoji: "<:1000051516:1506034685111832697>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/000/4058.png",
           special_attack: {
             name: "God of Fire Ace",
-            min_atk: 36,
-            max_atk: 54,
             gif: null
           },
           effect: "attackup",
           effectDuration: -1,
-          itself: true
+          itself: true,
+          count: 2
         },
         {
           title: "King of the Pirates - the Man who Achieved it All",
           id: "4151",
           attribute: "DEX",
           rank: "SS",
-          power: 36, health: 64, speed: 16,
-          attack_min: 14, attack_max: 18,
           emoji: "<:1000051517:1506035162448662689>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/100/4151.png",
           special_attack: {
             name: "God of Fire Ace",
-            min_atk: 32,
-            max_atk: 44,
             gif: null
           },
           effect: "attackup",
@@ -3558,28 +2949,22 @@ const consolidatedCardData = [
           id: "4387",
           attribute: "INT",
           rank: "SS",
-          power: 40, health: 68, speed: 16,
-          attack_min: 30, attack_max: 54,
-          count: 3,
           emoji: "<:1000051518:1506036346836353145>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/300/4387.png",
           special_attack: {
             name: "God of Fire Ace",
-            min_atk: 36,
-            max_atk: 72,
             gif: null
           },
           effect: "attackup",
           effectDuration: -1,
-          itself: true
+          itself: true,
+          count: 3
         },
         {
           title: "Recalling the Promise",
           id: "4572",
           attribute: "PSY",
           rank: "S",
-          power: 24, health: 44, speed: 10,
-          attack_min: 8, attack_max: 12,
           emoji: "<:1000051519:1506036798571151430>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/500/4572.png"
         },
@@ -3588,14 +2973,10 @@ const consolidatedCardData = [
           id: "4573",
           attribute: "PSY",
           rank: "SS",
-          power: 38, health: 64, speed: 16,
-          attack_min: 14, attack_max: 18,
           emoji: "<:1000051520:1506037079090401380>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/500/4573.png",
           special_attack: {
             name: "God of Fire Ace",
-            min_atk: 32,
-            max_atk: 44,
             gif: null
           },
           effect: "attackup",
@@ -3617,8 +2998,6 @@ const consolidatedCardData = [
           id: "076",
           attribute: "PSY",
           rank: "A",
-          power: 17, health: 30, speed: 5,
-          attack_min: 4, attack_max: 6,
           emoji: "<:1000051521:1506038074042486995>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0076.png"
         },
@@ -3626,8 +3005,6 @@ const consolidatedCardData = [
           id: "077",
           attribute: "PSY",
           rank: "A",
-          power: 17, health: 30, speed: 5,
-          attack_min: 4, attack_max: 6,
           emoji: "<:1000051522:1506038356943966218>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0077.png"
         },
@@ -3636,8 +3013,6 @@ const consolidatedCardData = [
           id: "529",
           attribute: "PSY",
           rank: "S",
-          power: 28, health: 46, speed: 11,
-          attack_min: 9, attack_max: 12,
           emoji: "<:1000051523:1506038607729922178>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0529.png"
         },
@@ -3646,14 +3021,10 @@ const consolidatedCardData = [
           id: "530",
           attribute: "PSY",
           rank: "SS",
-          power: 38, health: 64, speed: 14,
-          attack_min: 12, attack_max: 18,
           emoji: "<:1000051524:1506038942808674378>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0530.png",
           special_attack: {
             name: "Divine Departure",
-            min_atk: 32,
-            max_atk: 44,
             gif: null
           },
           effect: "attackup",
@@ -3665,8 +3036,6 @@ const consolidatedCardData = [
           id: "600",
           attribute: "PSY",
           rank: "B",
-          power: 14, health: 24, speed: 5,
-          attack_min: 3, attack_max: 5,
           emoji: "<:1000051525:1506042090226974831>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/600/0600.png"
         },
@@ -3675,8 +3044,6 @@ const consolidatedCardData = [
           id: "601",
           attribute: "PSY",
           rank: "A",
-          power: 17, health: 30, speed: 6,
-          attack_min: 5, attack_max: 8,
           emoji: "<:1000051526:1506042605262078144>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/600/0601.png"
         },
@@ -3685,14 +3052,10 @@ const consolidatedCardData = [
           id: "4560",
           attribute: "STR",
           rank: "SS",
-          power: 40, health: 68, speed: 14,
-          attack_min: 12, attack_max: 16,
           emoji: "<:1000051527:1506042813941416037>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/500/4560.png",
           special_attack: {
             name: "Divine Departure",
-            min_atk: 32,
-            max_atk: 44,
             gif: null
           },
           effect: "attackup",
@@ -3704,14 +3067,10 @@ const consolidatedCardData = [
           id: "4599",
           attribute: "STR",
           rank: "SS",
-          power: 40, health: 68, speed: 14,
-          attack_min: 12, attack_max: 18,
           emoji: "<:1000051528:1506043123686703297>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/500/4559.png",
           special_attack: {
             name: "Divine Departure",
-            min_atk: 32,
-            max_atk: 44,
             gif: null
           },
           effect: "attackup",
@@ -3723,8 +3082,6 @@ const consolidatedCardData = [
           id: "4465",
           attribute: "INT",
           rank: "UR",
-          power: 60, health: 80, speed: 20,
-          attack_min: 15, attack_max: 24,
           emoji: "<:1000051529:1506043596556730468>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/400/4465.png"
         },
@@ -3733,25 +3090,19 @@ const consolidatedCardData = [
           id: "4270",
           attribute: "DEX",
           rank: "S",
-          power: 28, health: 44, speed: 10,
-          attack_min: 8, attack_max: 11,
-          count: 2,
           emoji: "<:1000051530:1506043984399564901>",
-          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/200/4270.png"
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/200/4270.png",
+          count: 2
         },
         {
           title: "Shaking the Great Era of Piracy",
           id: "4153",
           attribute: "PSY",
           rank: "SS",
-          power: 42, health: 64, speed: 14,
-          attack_min: 12, attack_max: 16,
           emoji: "<:1000051531:1506044279104082081>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/100/4153.png",
           special_attack: {
             name: "Divine Departure",
-            min_atk: 32,
-            max_atk: 44,
             gif: null
           },
           effect: "attackup",
@@ -3763,14 +3114,10 @@ const consolidatedCardData = [
           id: "4152",
           attribute: "PSY",
           rank: "SS",
-          power: 42, health: 64, speed: 14,
-          attack_min: 12, attack_max: 16,
           emoji: "<:1000051532:1506044666901037189>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/100/4152.png",
           special_attack: {
             name: "Divine Departure",
-            min_atk: 32,
-            max_atk: 44,
             gif: null
           },
           effect: "attackup",
@@ -3782,14 +3129,10 @@ const consolidatedCardData = [
           id: "4056",
           attribute: "INT",
           rank: "UR",
-          power: 58, health: 82, speed: 20,
-          attack_min: 15, attack_max: 24,
           emoji: "<:1000051533:1506044962800795811>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/000/4056.png",
           special_attack: {
             name: "Divine Departure",
-            min_atk: 40,
-            max_atk: 60,
             gif: null
           },
           effect: "attackup",
@@ -3801,14 +3144,10 @@ const consolidatedCardData = [
           id: "4011",
           attribute: "PSY",
           rank: "SS",
-          power: 42, health: 64, speed: 14,
-          attack_min: 12, attack_max: 16,
           emoji: "<:1000051534:1506045348412391495>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/000/4011.png",
           special_attack: {
             name: "Divine Departure",
-            min_atk: 32,
-            max_atk: 44,
             gif: null
           },
           effect: "attackup",
@@ -3825,8 +3164,6 @@ const consolidatedCardData = [
           id: "776",
           attribute: "PSY",
           rank: "B",
-          power: 13, health: 22, speed: 4,
-          attack_min: 3, attack_max: 5,
           emoji: "<:1000051535:1506047834443747509>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/700/0776.png"
         },
@@ -3835,8 +3172,6 @@ const consolidatedCardData = [
           id: "777",
           attribute: "PSY",
           rank: "A",
-          power: 17, health: 30, speed: 6,
-          attack_min: 5, attack_max: 8,
           emoji: "<:1000051536:1506048075339399229>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/700/0777.png"
         },
@@ -3845,8 +3180,6 @@ const consolidatedCardData = [
           id: "2045",
           attribute: "PSY",
           rank: "A",
-          power: 17, health: 30, speed: 6,
-          attack_min: 4, attack_max: 7,
           emoji: "<:1000051537:1506048325651267775>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/2/000/2045.png"
         },
@@ -3854,8 +3187,6 @@ const consolidatedCardData = [
           id: "2555",
           attribute: "QCK",
           rank: "S",
-          power: 24, health: 40, speed: 10,
-          attack_min: 8, attack_max: 11,
           emoji: "<:1000051538:1506048543855607969>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/2/500/2555.png",
           effect: "attackdown",
@@ -3871,8 +3202,6 @@ const consolidatedCardData = [
           id: "952",
           attribute: "DEX",
           rank: "B",
-          power: 14, health: 24, speed: 5,
-          attack_min: 3, attack_max: 5,
           emoji: "<:1000051539:1506049998020808765>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0952.png"
         },
@@ -3880,8 +3209,6 @@ const consolidatedCardData = [
           id: "953",
           attribute: "DEX",
           rank: "A",
-          power: 17, health: 30, speed: 6,
-          attack_min: 5, attack_max: 8,
           emoji: "<:1000051540:1506050222529314877>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0953.png"
         },
@@ -3890,8 +3217,6 @@ const consolidatedCardData = [
           id: "1769",
           attribute: "INT",
           rank: "A",
-          power: 17, health: 30, speed: 6,
-          attack_min: 4, attack_max: 7,
           emoji: "<:1000051541:1506050564562354428>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/1/700/1769.png"
         },
@@ -3900,8 +3225,6 @@ const consolidatedCardData = [
           id: "1770",
           attribute: "DEX",
           rank: "S",
-          power: 26, health: 44, speed: 10,
-          attack_min: 8, attack_max: 11,
           emoji: "<:1000051542:1506050867445497978>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/1/700/1770.png"
         },
@@ -3910,8 +3233,6 @@ const consolidatedCardData = [
           id: "2044",
           attribute: "PSY",
           rank: "A",
-          power: 17, health: 30, speed: 6,
-          attack_min: 5, attack_max: 8,
           emoji: "<:1000051543:1506051246631555273>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/2/000/2044.png"
         },
@@ -3920,8 +3241,6 @@ const consolidatedCardData = [
           id: "2059",
           attribute: "STR",
           rank: "A",
-          power: 17, health: 30, speed: 6,
-          attack_min: 5, attack_max: 8,
           emoji: "<:1000051544:1506051530589995008>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/2/000/2059.png"
         },
@@ -3930,8 +3249,6 @@ const consolidatedCardData = [
           id: "2060",
           attribute: "STR",
           rank: "S",
-          power: 26, health: 44, speed: 10,
-          attack_min: 8, attack_max: 11,
           emoji: "<:1000051545:1506051829447004230>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/2/000/2060.png"
         },
@@ -3940,8 +3257,6 @@ const consolidatedCardData = [
           id: "3120",
           attribute: "INT",
           rank: "S",
-          power: 24, health: 40, speed: 9,
-          attack_min: 7, attack_max: 10,
           emoji: "<:1000051546:1506052267164307576>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/100/3120.png"
         },
@@ -3950,14 +3265,10 @@ const consolidatedCardData = [
           id: "3358",
           attribute: "PSY",
           rank: "S",
-          power: 24, health: 40, speed: 9,
-          attack_min: 7, attack_max: 10,
           emoji: "<:1000051547:1506052706706522172>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/300/3358.png",
           special_attack: {
             name: "Haki Flintlock",
-            min_atk: 16,
-            max_atk: 22,
             gif: null
           },
           effect: "stun",
@@ -3968,30 +3279,24 @@ const consolidatedCardData = [
           id: "3696",
           attribute: "STR",
           rank: "S",
-          power: 28, health: 46, speed: 11,
-          attack_min: 9, attack_max: 12,
-          count: 2,
           emoji: "<:1000051548:1506052986726518904>",
-          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/600/3696.png"
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/600/3696.png",
+          count: 2
         },
         {
           title: "Beckman",
           id: "4547",
           attribute: "STR",
           rank: "SS",
-          power: 44, health: 68, speed: 14,
-          attack_min: 12, attack_max: 16,
-          count: 2,
           emoji: "<:1000051549:1506053611724079124>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/500/4547.png",
           special_attack: {
             name: "Double Snipe",
-            min_atk: 28,
-            max_atk: 36,
             gif: null
           },
           effect: "bleed",
-          effectDuration: 3
+          effectDuration: 3,
+          count: 2
         }
         ]
       },
@@ -4004,8 +3309,6 @@ const consolidatedCardData = [
           id: "2046",
           attribute: "STR",
           rank: "A",
-          power: 17, health: 30, speed: 6,
-          attack_min: 5, attack_max: 8,
           emoji: "<:1000051550:1506055165948465182>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/2/000/2046.png"
         },
@@ -4014,14 +3317,10 @@ const consolidatedCardData = [
           id: "2554",
           attribute: "PSY",
           rank: "S",
-          power: 26, health: 44, speed: 10,
-          attack_min: 8, attack_max: 11,
           emoji: "<:1000051551:1506055383192436766>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/2/500/2554.png",
           special_attack: {
             name: "Sneak Attack",
-            min_atk: 18,
-            max_atk: 24,
             gif: null
           }
         },
@@ -4030,8 +3329,6 @@ const consolidatedCardData = [
           id: "3121",
           attribute: "INT",
           rank: "S",
-          power: 24, health: 40, speed: 9,
-          attack_min: 7, attack_max: 10,
           emoji: "<:1000051552:1506055656610730044>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/100/3121.png"
         }
@@ -4046,14 +3343,10 @@ const consolidatedCardData = [
           id: "4023",
           attribute: "PSY",
           rank: "S",
-          power: 24, health: 40, speed: 9,
-          attack_min: 7, attack_max: 10,
           emoji: "<:1000051553:1506057154149224618>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/000/4023.png",
           special_attack: {
             name: "Emotional Electrocution",
-            min_atk: 16,
-            max_atk: 22,
             gif: null
           },
           effect: "confusion",
@@ -4070,19 +3363,15 @@ const consolidatedCardData = [
           id: "3997",
           attribute: "PSY",
           rank: "S",
-          power: 24, health: 40, speed: 9,
-          attack_min: 7, attack_max: 10,
-          count: 2,
           emoji: "<:1000051554:1506058205229219960>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/900/3997.png",
           special_attack: {
             name: "Roars and Swords",
-            min_atk: 16,
-            max_atk: 22,
             gif: null
           },
           effect: "attackdown",
-          effectDuration: -1
+          effectDuration: -1,
+          count: 2
         }
         ]
       },
@@ -4095,25 +3384,22 @@ const consolidatedCardData = [
           id: "3998",
           attribute: "PSY",
           rank: "S",
-          power: 24, health: 40, speed: 9,
-          attack_min: 7, attack_max: 10,
-          count: 2,
           emoji: "<:1000051555:1506058835801149470>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/900/3998.png",
           special_attack: {
             name: "Fists of the Coordinated Duo",
-            min_atk: 16,
-            max_atk: 22,
             gif: null
           },
           effect: "confusion",
-          effectDuration: 3
+          effectDuration: 3,
+          count: 2
         }
         ]
       }
     ]
   }
 ];
+
 
 
 // Merge morecards (also grouped format) then flatten everything into the flat array

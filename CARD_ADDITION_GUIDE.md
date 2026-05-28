@@ -15,6 +15,36 @@ Cards are defined in two main files:
 - **crews.js** - Faculty/crew definitions and their ranks
 - **marines.js** - Marine organization characters
 
+## How Stats Work
+
+**You do not write stat values.** Power, health, speed, attack_min, and attack_max are all **automatically generated at runtime** from the card's `rank` field using a seeded random algorithm. The same card always gets the same stats (seeded by its ID), so stats are stable across restarts.
+
+Special attack damage (min_atk / max_atk) is also **auto-generated** — approximately 1.5× attack_min and 2× attack_max. You only write the attack name and gif.
+
+The only fields you write are: `id`, `rank`, `attribute`, `emoji`, `image_url`, and optional fields like `title`, `special_attack` (name + gif only), `effect`, `count`, `scount`, `boost`.
+
+---
+
+## Rank Modifiers
+
+Any rank can be followed by `-` or `+` to place the card in the lower or upper portion of that rank's stat range:
+
+| Suffix | Sub-band | Example (S power range 20–30) |
+|--------|----------|-------------------------------|
+| `-`    | Bottom 25 % of the band | 20 – 22 |
+| *(none)* | Middle 50 % of the band | 22 – 27 |
+| `+`    | Top 25 % of the band | 27 – 30 |
+
+```javascript
+rank: 'S-'   // lower-end S card (20–22 power)
+rank: 'S'    // mid S card (22–27 power)
+rank: 'S+'   // high-end S card (27–30 power)
+```
+
+Modifiers work on all ranks: `B-`, `A+`, `SS-`, `UR+`, etc.
+
+---
+
 ## Source Layout
 
 Both `cards.js` and `morecards.js` use the same **grouped format**:
@@ -22,7 +52,7 @@ Both `cards.js` and `morecards.js` use the same **grouped format**:
 ```
 Faculty block
   └── Character block  (character name + aliases — shared by all cards below)
-        └── Card block   (id, stats, emoji, image, optional special attack…)
+        └── Card block   (id, rank, emoji, image, optional special attack…)
         └── Card block
         …
   └── Character block
@@ -62,15 +92,13 @@ Faculty block
   title: 'Gum-Gum Pistol',      // card display name (omit for untitled base forms)
   id: '0002',                    // unique string id
   attribute: 'STR',              // STR | QCK | INT | DEX | PSY
-  rank: 'B',                     // D | C | B | A | S | SS | UR
-  power: 12, health: 18, speed: 4,
-  attack_min: 3, attack_max: 4,
+  rank: 'B',                     // D | C | B | A | S | SS | UR  (optional +/-)
   emoji: '<:Luffygumgumpistol:1492353926257971341>',
-  image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0002.png',
-  special_attack: {              // optional; required for SS rank and above
+  image_url: 'https://...',
+  special_attack: {              // optional; include for A rank and above
     name: 'Gum-Gum Pistol',
-    min_atk: 6, max_atk: 9,
     gif: 'https://media1.tenor.com/m/eTo-ytFNLX8AAAAC/luffy-pistol.gif'
+    // min_atk / max_atk are NOT written — auto-generated from rank
   },
   effect: 'stun',               // see Status Effects section below (optional)
   effectDuration: 1
@@ -87,8 +115,7 @@ Some characters don't fight (doctors, cooks, etc.) — use a boost card:
   id: '9999',
   attribute: 'PSY',
   rank: 'C',
-  power: 1, health: 8, speed: 1,
-  attack_min: 0, attack_max: 0,
+  // Stats auto-generated; boost cards always have attack_min/max = 0
   boost: 'Monkey D. Luffy (5%), Figarland Shanks (5%)',
   emoji: '<:Makino:1234567890>',
   image_url: null
@@ -113,13 +140,10 @@ Boost cards have **NO** `special_attack`.
           id: '0001',
           attribute: 'STR',
           rank: 'C',
-          power: 8, health: 50, speed: 3,
-          attack_min: 2, attack_max: 3,
           emoji: '<:MonkeyD:1492353158960124037>',
           image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0001.png',
           special_attack: {
             name: 'Gum-Gum Pistol',
-            min_atk: 6, max_atk: 9,
             gif: 'https://media1.tenor.com/m/eTo-ytFNLX8AAAAC/luffy-pistol.gif'
           },
           effect: 'stun', effectDuration: 1
@@ -129,13 +153,10 @@ Boost cards have **NO** `special_attack`.
           id: '0002',
           attribute: 'STR',
           rank: 'B',
-          power: 12, health: 18, speed: 4,
-          attack_min: 3, attack_max: 4,
           emoji: '<:Luffygumgumpistol:1492353926257971341>',
           image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0002.png',
           special_attack: {
             name: 'Gum-Gum Pistol',
-            min_atk: 6, max_atk: 9,
             gif: 'https://media1.tenor.com/m/eTo-ytFNLX8AAAAC/luffy-pistol.gif'
           },
           effect: 'stun', effectDuration: 1
@@ -150,8 +171,6 @@ Boost cards have **NO** `special_attack`.
           id: '0005',
           attribute: 'DEX',
           rank: 'B',
-          power: 14, health: 22, speed: 4,
-          attack_min: 3, attack_max: 4,
           emoji: '<:0005:1492532805434081510>',
           image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0005.png'
         }
@@ -175,24 +194,25 @@ Boost cards have **NO** `special_attack`.
 
 ## Rank Reference
 
-| Rank | Examples | Power Range | When to Use |
-|------|----------|-------------|------------|
-| D | Background characters, weak enemies | 5-15 power | Truly insignificant roles |
-| C | Early arc characters, weak fighters | 8-20 power | Weak but notable |
-| B | Solid crew members, early arcs | 12-30 power | Normal fighter level |
-| A | Strong crew members, commanders | 16-35 power | Notable fighters |
-| S | Very strong characters, senior leaders | 24-50 power | Powerful fighters |
-| SS | Elite level, major characters | 45-60+ power | Very powerful |
-| UR | Peak tier, protagonists | 50+ power | Extremely powerful |
+| Rank | Power Generated | When to Use |
+|------|-----------------|-------------|
+| D    | 0 – 5           | Background characters, weak enemies |
+| C    | 5 – 10          | Early arc characters, weak fighters |
+| B    | 10 – 15         | Solid crew members, average fighters |
+| A    | 15 – 20         | Strong crew members, commanders |
+| S    | 20 – 30         | Very strong characters, senior leaders |
+| SS   | 30 – 50         | Elite level, major characters |
+| UR   | 50 – 80         | Peak tier, protagonists |
+
+Use `rank: 'S+'` (or similar) to push a card to the top of its band without moving up a full tier.
 
 ---
 
 ## Special Attacks
 
-- **Required for:** SS rank and above only
-- **Damage scaling:** Special attack max ≈ 2–3× normal attack_max
-- **All special attacks must include a status effect**
-- **Status effect strength scales with card importance:**
+- Include `special_attack` for A rank and above (required for SS+)
+- Only write `name` and `gif` — damage is auto-generated (≈ 1.5× and 2× the card's attack stats)
+- All special attacks should include a status effect:
   - Weaker cards: confuse, attackdown, defensedown
   - Stronger cards: stun, freeze, bleed, undead
   - Elite/Yonko level: undead, stun, or bleed with high duration/amount
@@ -274,17 +294,18 @@ Use `null` (never a placeholder string) for missing assets:
 
 ## Pre-submission Checklist
 
-- [ ] All required fields are filled (use `null` for missing assets, never placeholder strings)
+- [ ] All required fields are filled (`id`, `rank`, `emoji`, `image_url`)
+- [ ] Use `null` for missing assets, never placeholder strings
 - [ ] Character block is inside the correct faculty block
 - [ ] All cards for the same character are grouped in the same character block
 - [ ] Aliases are lowercase
 - [ ] Attributes match character abilities
-- [ ] Ranks are appropriate for anime importance
+- [ ] Ranks are appropriate for anime importance (use +/- to fine-tune)
 - [ ] SS+ rank cards have special attacks with status effects
-- [ ] Special attack damage ≈ 2× normal attack
+- [ ] Special attacks only include `name` and `gif` — NO stat values
 - [ ] Status effects are from the valid list only
 - [ ] Stronger cards have stronger/more impactful status effects
-- [ ] Non-combat support characters use boost type (attack_min/max: 0, boost field set)
+- [ ] Non-combat support characters use `boost` field (no special_attack)
 - [ ] All effect names are lowercase (attackdown, not "Attack Down")
 - [ ] Effect durations are reasonable (1–5 turns)
 - [ ] `pullable: true` is NOT written (not needed)
