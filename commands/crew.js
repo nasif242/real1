@@ -269,7 +269,13 @@ module.exports = {
         if (message) return message.reply(content);
         return interaction.reply({ content, ephemeral: true });
       }
-      crew.jollyRoger = await resolveTenorUrl(url);
+      let resolvedJolly = await resolveTenorUrl(url);
+      if (!/\.(gif|png|jpg|jpeg|webp)(\?.*)?$/i.test(resolvedJolly)) {
+        const content = 'Please use a **direct** image or GIF link (URL must end in `.gif`, `.png`, `.jpg`, or `.webp`). Copy the direct media URL, not the page link.';
+        if (message) return message.reply(content);
+        return interaction.reply({ content, ephemeral: true });
+      }
+      crew.jollyRoger = resolvedJolly;
       await crew.save();
       const embed = await buildCrewEmbed(crew, client);
       if (message) return message.reply({ content: 'Jolly roger updated.', embeds: [embed] });

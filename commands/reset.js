@@ -83,6 +83,7 @@ module.exports = {
       user.lootCooldownUntil = null;
       user.betCooldownUntil = null;
       user.gambleCooldownUntil = null;
+      user.robCooldownUntil = null;
       user.activeBountyTarget = null;
       // reset pulls for this user (honor support server membership + special card bonuses)
       user.pullsRemaining = PULL_LIMIT + (user.supportServerMember ? 1 : 0) + getCardExtras(user);

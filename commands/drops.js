@@ -103,7 +103,7 @@ async function initializeDrops(client) {
     for (const entry of savedChannels) {
       try {
         // entry: { channelId, threshold, progress }
-        await startDropTimer(client, entry.channelId, entry.threshold, entry.progress || 0);
+        await startDropTimer(client, entry.channelId, entry.threshold, entry.progress || 0, true);
         console.log(`Resumed card drops in channel ${entry.channelId} (threshold=${entry.threshold})`);
       } catch (err) {
         console.error('Unable to resume saved drop channel:', entry.channelId, err.message || err);
@@ -232,7 +232,7 @@ async function _spawnDrop(channelId) {
 /**
  * Start the drop spawning timer
  */
-async function startDropTimer(client, channelId, threshold = 100, initialProgress = 0) {
+async function startDropTimer(client, channelId, threshold = 100, initialProgress = 0, skipPersist = false) {
   const channel = await validateDropsChannel(client, channelId);
   if (!channel) {
     throw new Error('Unable to access drops channel. Make sure the bot has view/send permission in that channel.');
@@ -247,8 +247,10 @@ async function startDropTimer(client, channelId, threshold = 100, initialProgres
   if (!messageCounts.has(channelId)) {
     messageCounts.set(channelId, Number.isFinite(Number(initialProgress)) ? Number(initialProgress) : 0);
   }
-  // persist full channel configs
-  saveDropChannelIds(Array.from(configuredDropChannels).map(cid => ({ channelId: cid, threshold: channelThresholds.get(cid) || 100, progress: messageCounts.get(cid) || 0 }))).catch(() => {});
+  // persist full channel configs (skip during bot startup to avoid overwriting saved config with partial list)
+  if (!skipPersist) {
+    saveDropChannelIds(Array.from(configuredDropChannels).map(cid => ({ channelId: cid, threshold: channelThresholds.get(cid) || 100, progress: messageCounts.get(cid) || 0 }))).catch(() => {});
+  }
 
   // ensure previous listener cleared before attaching a new one
   try {

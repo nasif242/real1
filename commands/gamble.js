@@ -816,9 +816,7 @@ async function handleSelect(interaction) {
         { label: '500 Beli', value: '500' },
         { label: '1,000 Beli', value: '1000' },
         { label: '5,000 Beli', value: '5000' },
-        { label: '10,000 Beli', value: '10000' },
-        { label: '50,000 Beli', value: '50000' },
-        { label: 'All-In', value: 'allin' }
+        { label: '10,000 Beli', value: '10000' }
       ]);
 
     const gameNames = { coin: 'Coin Flip', blackjack: 'Blackjack', roulette: 'Roulette', slots: 'Slots', crash: 'Crash', towers: 'Towers', scratch: 'Scratch' };
@@ -833,11 +831,9 @@ async function handleSelect(interaction) {
 
       if (action === 'gamble_bet') {
     const game = parts[2];
-    let bet = interaction.values[0] === 'allin'
-      ? Math.max(100, user.balance || 0)
-      : parseInt(interaction.values[0], 10);
-
+    let bet = parseInt(interaction.values[0], 10);
     if (!bet || bet < 100) bet = 100;
+    if (bet > 10000) bet = 10000;
 
     if ((user.balance || 0) < bet) {
       return interaction.followUp({
