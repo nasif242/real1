@@ -316,6 +316,8 @@ Use `null` (never a placeholder string) for missing assets:
 - **bleed** — 2 HP damage per turn
 - **regen** — Restores percentage of max HP per turn
 - **confusion** — Chance to miss attacks (use `effectChance` for miss %)
+- **drunk** — Target hits the wrong target with X% chance for N turns (use `effectChance` for the wrong-target %)
+- **doomed** — Target dies after N turns; use `effectDuration: -1` for instant-doom
 - **attackup** — Increases attack by percentage
 - **attackdown** — Decreases attack by percentage
 - **defenseup** — Increases defense by percentage
@@ -325,6 +327,8 @@ Use `null` (never a placeholder string) for missing assets:
 - **reflect** — Reflects opponent's attack back
 
 ⚠️ **Does NOT exist:** `burn`, `poison`, `speeddown`, `paralysis`
+
+⚠️ **All effect names must appear in the list above.** If an effect name is not listed here it will NOT display on the card info embed and will NOT work in battle. Do not invent effect names — use only the ones above.
 
 ---
 

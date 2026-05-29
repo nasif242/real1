@@ -2,6 +2,8 @@
 
 - **gif field**: The `gif` field is **not part of the card input layout** and must **never** be added to `special_attack` in cards.js. If existing cards have `gif: null`, do not copy that pattern for new cards.
 
+- **Valid effects only**: Only effect names from this exact list will display on the card info embed and work in battle — anything else silently does nothing: `stun`, `freeze`, `cut`, `bleed`, `regen`, `confusion`, `drunk`, `doomed`, `attackup`, `attackdown`, `defenseup`, `defensedown`, `truesight`, `undead`, `reflect`. Never use an effect name not on this list.
+
 - **Strict layout adherence**: Card adding must strictly follow what is stated in the input layout (see CARD_ADDITION_GUIDE.md). Do not add any field that was not explicitly stated. Do not change any stated value.
 
 - Boost attack penalty: When a card has a `boost` specified, the card's attack should be set to be two times worse than the average attack for its declared rank (or two times worse than the intended attack). This is a content-guideline for card creators.

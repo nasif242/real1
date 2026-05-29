@@ -1241,15 +1241,21 @@ function getEffectDescription(effectType, duration, isSelf = false, effectAmount
       ? ` (${amount}%)`
       : effectType === 'confusion'
         ? ` (${chance}% chance)`
-        : effectType === 'bleed' || effectType === 'cut'
-          ? ` (${amount} damage)`
-          : '';
+        : effectType === 'drunk'
+          ? ` (${chance}% wrong target chance)`
+          : effectType === 'bleed' || effectType === 'cut'
+            ? ` (${amount} damage)`
+            : '';
 
   const effectDescriptions = {
     regen: isPermanent
       ? `Permanently regenerates HP each turn${amountText}`
       : `Regenerates HP each turn${durationText ? ` for ${durationText}` : ''}${amountText}`,
     confusion: `Confuses the ${targetWord}${durationText ? ` for ${durationText}` : ''}${amountText}`,
+    drunk: `Makes the ${targetWord} drunk${durationText ? ` for ${durationText}` : ''}${amountText}`,
+    doomed: isPermanent
+      ? `Dooms the ${targetWord} (dies instantly)`
+      : `Dooms the ${targetWord} — dies in ${durationText || '1 turn'}`,
     attackup: isPermanent
       ? `Permanently boosts ${targetLabel} attack by${amountText}`
       : `Boosts ${targetLabel} attack${durationText ? ` for ${durationText}` : ''} by${amountText}`,
@@ -1267,8 +1273,6 @@ function getEffectDescription(effectType, duration, isSelf = false, effectAmount
     stun: `Stuns the ${targetWord}${durationText ? ` for ${durationText}` : ''}`,
     freeze: `Freezes the ${targetWord}${durationText ? ` for ${durationText}` : ''}`,
     cut: `Cuts the ${targetWord}${durationText ? ` for ${durationText}` : ''}`,
-    // bleed triggers when the affected card spends energy
-    // (attack/special/ability); duration counts the number of uses
     bleed: `Bleeds the ${targetWord}${durationText ? ` for ${durationText}` : ''}`,
   };
   return effectDescriptions[effectType] || null;
