@@ -1,5 +1,5 @@
 const { createCanvas, loadImage } = require('@napi-rs/canvas');
-const { isBaseCard, drawBaseFaceCard } = require('./baseFaceRenderer');
+const { isBaseCard, detectFaceCenter, drawBaseFaceCard } = require('./baseFaceRenderer');
 
 const COLS = 5;
 const ROWS = 3;
@@ -57,9 +57,14 @@ function resolveImageUrl(slot) {
 
 async function generateBinderCanvas(slots) {
   const urls = slots.map(resolveImageUrl);
-  const imageResults = await Promise.allSettled(
-    urls.map(url => url ? loadImageWithTimeout(url) : Promise.resolve(null))
-  );
+  // Run image loading and BASE-card face detection in parallel
+  const [imageResults, faceRegions] = await Promise.all([
+    Promise.allSettled(urls.map(url => url ? loadImageWithTimeout(url) : Promise.resolve(null))),
+    Promise.all(slots.map((slot, i) => {
+      if (!slot || !isBaseCard(slot.cardDef)) return Promise.resolve(null);
+      return urls[i] ? detectFaceCenter(urls[i]) : Promise.resolve(null);
+    }))
+  ]);
 
   const canvas = createCanvas(CANVAS_W, CANVAS_H);
   const ctx = canvas.getContext('2d');
@@ -88,19 +93,19 @@ async function generateBinderCanvas(slots) {
     const img = imgResult && imgResult.status === 'fulfilled' ? imgResult.value : null;
 
     if (isBaseCard(cardDef)) {
-      // BASE cards: face-centered circular crop with golden border
-      const cx = x + CELL_W / 2;
-      const cy = y + (CELL_H - 26) / 2;  // vertically centered above ID bar
-      const diameter = 104;
-      ctx.globalAlpha = owned ? 1.0 : 0.25;
-      drawBaseFaceCard(ctx, img, cx, cy, diameter, cardDef.character || '?');
+      // BASE cards: square face-crop with golden border (same dimensions as regular cards)
+      const PAD = 8;
+      ctx.globalAlpha = owned ? 1.0 : 0.2;
+      drawBaseFaceCard(ctx, img, faceRegions[i], x + PAD, y + PAD, CELL_W - PAD * 2, CELL_H - PAD * 2, cardDef.character || '?');
       ctx.globalAlpha = 1.0;
       if (!owned) {
+        ctx.fillStyle = 'rgba(0,0,0,0.65)';
+        ctx.fillRect(x + 1, y + 1, CELL_W - 2, CELL_H - 2);
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 11px sans-serif';
+        ctx.font = 'bold 13px sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText('Not Owned', cx, cy + diameter / 2 + 12);
+        ctx.fillText('Not Owned', x + CELL_W / 2, y + CELL_H / 2 - 10);
       }
     } else {
       // Padding: ships get a small border; artifacts & regular fill the slot

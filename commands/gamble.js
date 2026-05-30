@@ -28,7 +28,7 @@ const ATTRIBUTE_COLORS = {
   QCK: '#4DABF7',
   BASE: '#FFFFFF'
 };
-const { isBaseCard, drawBaseFaceCard } = require('../utils/baseFaceRenderer');
+const { isBaseCard, detectFaceCenter, drawBaseFaceCard } = require('../utils/baseFaceRenderer');
 
 const GAME_EMOJIS = {
   coin: '<:Untitleddesign:1507893497103913040>',
@@ -631,14 +631,17 @@ async function renderSlotsCanvas(reels, matchType) {
 
     let imgLoaded = false;
     if (isBaseCard(card)) {
-      // BASE cards: face-centered circular crop from image_url with golden border
+      // BASE cards: square face-crop with golden border (same slot area as emoji cards)
       if (card.image_url) {
         try {
-          const img = await loadImage(card.image_url);
-          const diameter = 88;
-          const cx = x + slotW / 2;
-          const cy = startY + 8 + diameter / 2;
-          drawBaseFaceCard(ctx, img, cx, cy, diameter, card.character || '?');
+          const [img, faceInfo] = await Promise.all([
+            loadImage(card.image_url),
+            detectFaceCenter(card.image_url)
+          ]);
+          const iw = 88, ih = 90;
+          const destX = x + (slotW - iw) / 2;
+          const destY = startY + 4;
+          drawBaseFaceCard(ctx, img, faceInfo, destX, destY, iw, ih, card.character || '?');
           imgLoaded = true;
         } catch (e) { /* fall through to text */ }
       }

@@ -2,7 +2,7 @@ let createCanvas, loadImage;
 let _imageCache = null;
 let loadImageCached = null;
 let CANVAS_AVAILABLE = true;
-const { isBaseCard, drawBaseFaceCard } = require('./baseFaceRenderer');
+const { isBaseCard, detectFaceCenter, drawBaseFaceCard } = require('./baseFaceRenderer');
 
 // Try preferred fast native binding first, then fall back to node-canvas
 try {
@@ -182,8 +182,14 @@ async function generateTeamImage({ username, totalPower, cards, backgroundUrl })
     : Promise.resolve(null);
 
   const cardImagePromises = cards.slice(0, 3).map(c => c ? loadCardImage(c) : Promise.resolve(null));
+  const faceInfoPromises = cards.slice(0, 3).map(c => {
+    if (!c || !isBaseCard(c) || !c.image_url) return Promise.resolve(null);
+    return detectFaceCenter(c.image_url);
+  });
 
-  const [bg, ...cardImages] = await Promise.all([bgPromise, ...cardImagePromises]);
+  const [bg, ...rest] = await Promise.all([bgPromise, ...cardImagePromises, ...faceInfoPromises]);
+  const cardImages = rest.slice(0, 3);
+  const faceInfos = rest.slice(3);
 
   if (bg) {
     const scale = Math.max(width / bg.width, height / bg.height);
@@ -224,11 +230,8 @@ async function generateTeamImage({ username, totalPower, cards, backgroundUrl })
     if (card) {
       const cardImage = cardImages[i];
       if (isBaseCard(card)) {
-        // BASE cards: face-centered circular crop with golden border
-        const cx = x + cardSize / 2;
-        const cy = squareY + cardSize / 2;
-        const diameter = cardSize - 10;
-        drawBaseFaceCard(ctx, cardImage, cx, cy, diameter, card.character || '?');
+        // BASE cards: square face-crop with golden border
+        drawBaseFaceCard(ctx, cardImage, faceInfos[i], x, squareY, cardSize, cardSize, card.character || '?');
       } else if (cardImage) {
         fitImageToSquare(ctx, cardImage, x, squareY, cardSize, 40);
         ctx.strokeStyle = '#ffffff';
