@@ -2810,6 +2810,15 @@ const consolidatedCardData = [
           },
           effect: "drunk",
           effectDuration: 3
+        },
+        {
+          title: "Rayleigh & Gaban",
+          id: "3517",
+          attribute: "PSY",
+          rank: "S",
+          emoji: "<:3517:1510312152190156891>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/500/3517.png",
+          count: 2
         }
         ]
       },
@@ -3022,6 +3031,435 @@ const consolidatedCardData = [
           effect: "attackup",
           effectDuration: -1,
           itself: true
+        }
+        ]
+      },
+      {
+        character: "Crocus",
+        alias: ["crocus", "doctor crocus"],
+        cards: [
+        {
+          id: "0587",
+          attribute: "INT",
+          rank: "B",
+          emoji: "<:0587:1510314031657914610>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0587.png"
+        },
+        {
+          title: "Twin Cape Lighthouse Keeper",
+          id: "0588",
+          attribute: "INT",
+          rank: "A",
+          emoji: "<:0588:1510314234301387024>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0588.png"
+        },
+        {
+          title: "Lighthouse Keeper",
+          id: "3182",
+          attribute: "PSY",
+          rank: "A",
+          emoji: "<:3182:1510314542297780224>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/100/3182.png"
+        },
+        {
+          title: "Waiting at the Cape to Fulfil a Promise",
+          id: "3183",
+          attribute: "PSY",
+          rank: "S",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/100/3183.png",
+          special_attack: {
+            name: "Silent Intimidation"
+          },
+          effect: "regen",
+          itself: true,
+          all: true
+        },
+        {
+          title: "Ship Doctor of the Roger Pirates",
+          id: "3817",
+          attribute: "PSY",
+          rank: "S",
+          emoji: "<:3817:1510316240655093830>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/800/3817.png"
+        }
+        ]
+      },
+      {
+        character: "Rayleigh & Gaban",
+        alias: ["rayleigh gaban", "rayleigh & gaban"],
+        cards: [
+        {
+          title: "The Mighty Duo",
+          id: "3810",
+          attribute: "PSY/DEX",
+          rank: "S",
+          emoji: "<:3810:1510312834574188594>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/800/3810.png",
+          special_attack: {
+            name: "Unstoppable Onslaught"
+          },
+          effect: "attackup",
+          effectDuration: -1,
+          itself: true,
+          scount: 2,
+          count: 2
+        },
+        {
+          title: "The Assaulting Duo",
+          id: "3811",
+          attribute: "PSY/DEX",
+          rank: "SS",
+          emoji: "<:3811:1510313452789563664>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/800/3811.png",
+          special_attack: {
+            name: "Unstoppable Onslaught"
+          },
+          effect: "attackup",
+          effectDuration: -1,
+          itself: true,
+          scount: 2,
+          count: 2
+        }
+        ]
+      },
+      {
+        character: "Gaban",
+        alias: ["gaban", "scopper gaban"],
+        cards: [
+        {
+          id: "3395",
+          attribute: "PSY",
+          rank: "S",
+          emoji: "<:3395:1510311641294704812>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/300/3395.png"
+        }
+        ]
+      },
+      {
+        character: "Nozudon & Sambel",
+        alias: ["nozudon", "sambel", "nozudon sambel"],
+        cards: [
+        {
+          id: "3818",
+          attribute: "PSY",
+          rank: "S",
+          emoji: "<:3818:1510335506498584656>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/800/3818.png",
+          count: 2
+        }
+        ]
+      },
+      {
+        character: "Kozuki Oden",
+        alias: ["oden", "kozuki oden"],
+        cards: [
+        {
+          title: "Aspiring to the Grand Voyage",
+          id: "3619",
+          attribute: "DEX",
+          rank: "S",
+          emoji: "<:3619:1510340070698123495>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/600/3619.png"
+        },
+        {
+          title: "Welcoming Feast",
+          id: "3620",
+          attribute: "DEX",
+          rank: "SS",
+          emoji: "<:3620:1510339915005693992>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/600/3620.png",
+          special_attack: {
+            name: "Entertaining the Voyage"
+          },
+          effect: "bleed",
+          effectDuration: -1,
+          effectAmount: 5
+        }
+        ]
+      },
+      {
+        character: "Moon Isaac Jr.",
+        alias: ["moon isaac", "moon isaac jr", "isaac jr"],
+        cards: [
+        {
+          title: "Tactical Staff Officer of the Roger Pirates",
+          id: "6000",
+          attribute: "BASE",
+          rank: "C",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/6/64/Moon_Isaac_Jr._Anime_Infobox.png/revision/latest?cb=20210411032337"
+        }
+        ]
+      },
+      {
+        character: "Donquino",
+        alias: ["donquino"],
+        cards: [
+        {
+          title: "Helmsman of the Roger Pirates",
+          id: "6003",
+          attribute: "BASE",
+          rank: "C",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/4/49/Donquino_Anime_Infobox.png/revision/latest?cb=20210124103408"
+        }
+        ]
+      },
+      {
+        character: "Millet Pine",
+        alias: ["millet pine", "milletpine"],
+        cards: [
+        {
+          title: "Torturer of the Roger Pirates",
+          id: "6004",
+          attribute: "BASE",
+          rank: "C",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/8/8d/Millet_Pine_Anime_Infobox.png/revision/latest?cb=20210412131305"
+        }
+        ]
+      },
+      {
+        character: "Rowing",
+        alias: ["rowing"],
+        cards: [
+        {
+          title: "Scholar of the Roger Pirates",
+          id: "6005",
+          attribute: "BASE",
+          rank: "C",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/4/45/Rowing_Anime_Infobox.png/revision/latest?cb=20210124102143"
+        }
+        ]
+      },
+      {
+        character: "Erio",
+        alias: ["erio"],
+        cards: [
+        {
+          title: "Information Broker of the Roger Pirates",
+          id: "6006",
+          attribute: "BASE",
+          rank: "C",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/3/36/Erio_Anime_Infobox.png/revision/latest?cb=20210321043944"
+        }
+        ]
+      },
+      {
+        character: "Spencer",
+        alias: ["spencer"],
+        cards: [
+        {
+          title: "Member of the Roger Pirates",
+          id: "6007",
+          attribute: "BASE",
+          rank: "C",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/9/95/Spencer_Anime_Infobox.png/revision/latest?cb=20210714034828"
+        }
+        ]
+      },
+      {
+        character: "Petermoo",
+        alias: ["petermoo"],
+        cards: [
+        {
+          title: "Gunner of the Roger Pirates",
+          id: "6008",
+          attribute: "BASE",
+          rank: "C",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/4/45/Petermoo_Anime_Infobox.png/revision/latest?cb=20210412130635"
+        }
+        ]
+      },
+      {
+        character: "JacksonBanner",
+        alias: ["jacksonbanner", "jackson banner"],
+        cards: [
+        {
+          title: "Musician of the Roger Pirates",
+          id: "6009",
+          attribute: "BASE",
+          rank: "C",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/c/c6/Jacksonbanner_Anime_Infobox.png/revision/latest?cb=20210404035046"
+        }
+        ]
+      },
+      {
+        character: "Bluemarine",
+        alias: ["bluemarine", "blumarine"],
+        cards: [
+        {
+          title: "Shipwright of the Roger Pirates",
+          id: "6010",
+          attribute: "BASE",
+          rank: "C",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/7/7b/Blumarine_Anime_Infobox.png/revision/latest?cb=20210124102746"
+        }
+        ]
+      },
+      {
+        character: "MAX Marx",
+        alias: ["max marx", "marx"],
+        cards: [
+        {
+          title: "Cook of the Roger Pirates",
+          id: "6011",
+          attribute: "BASE",
+          rank: "C",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/9/91/MAX_Marx_Anime_Infobox.png/revision/latest?cb=20210328040737"
+        }
+        ]
+      },
+      {
+        character: "Taro",
+        alias: ["taro"],
+        cards: [
+        {
+          title: "Member of the Roger Pirates",
+          id: "6012",
+          attribute: "BASE",
+          rank: "C",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/3/3c/Taro_Anime_Infobox.png/revision/latest?cb=20210403112556"
+        }
+        ]
+      },
+      {
+        character: "Doringo",
+        alias: ["doringo"],
+        cards: [
+        {
+          title: "Member of the Roger Pirates",
+          id: "6013",
+          attribute: "BASE",
+          rank: "C",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/3/33/Doringo_Anime_Infobox.png/revision/latest/scale-to-width-down/1000?cb=20210328040148"
+        }
+        ]
+      },
+      {
+        character: "Ganryu",
+        alias: ["ganryu"],
+        cards: [
+        {
+          title: "Member of the Roger Pirates",
+          id: "6014",
+          attribute: "BASE",
+          rank: "C",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/9/95/Ganryu_%28Roger_Pirates%29_Anime_Infobox.png/revision/latest?cb=20210404034431"
+        }
+        ]
+      },
+      {
+        character: "CB Gallant",
+        alias: ["cb gallant", "gallant"],
+        cards: [
+        {
+          title: "Member of the Roger Pirates",
+          id: "6015",
+          attribute: "BASE",
+          rank: "C",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/7/77/CB_Gallant_Anime_Infobox.png/revision/latest?cb=20210321032722"
+        }
+        ]
+      },
+      {
+        character: "Mr. Momora",
+        alias: ["mr momora", "momora"],
+        cards: [
+        {
+          title: "Member of the Roger Pirates",
+          id: "6016",
+          attribute: "BASE",
+          rank: "C",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/2/22/Mr._Momora_Anime_Infobox.png/revision/latest?cb=20210321035947"
+        }
+        ]
+      },
+      {
+        character: "Yui",
+        alias: ["yui"],
+        cards: [
+        {
+          title: "Member of the Roger Pirates",
+          id: "6017",
+          attribute: "BASE",
+          rank: "C",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/2/2f/Yui_Anime_Infobox.png/revision/latest?cb=20210321033432"
+        }
+        ]
+      },
+      {
+        character: "Rangram",
+        alias: ["rangram"],
+        cards: [
+        {
+          title: "Member of the Roger Pirates",
+          id: "6018",
+          attribute: "BASE",
+          rank: "C",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/f/fa/Rangram_Manga_Infobox.png/revision/latest?cb=20250915073155"
+        }
+        ]
+      },
+      {
+        character: "Mugren",
+        alias: ["mugren", "colonel mugren"],
+        cards: [
+        {
+          title: "Colonel Mugren - Member of the Roger Pirates",
+          id: "6019",
+          attribute: "BASE",
+          rank: "C",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/5/5a/Mugren_Anime_Infobox.png/revision/latest?cb=20210404031141"
+        }
+        ]
+      },
+      {
+        character: "Bankuro",
+        alias: ["bankuro"],
+        cards: [
+        {
+          title: "Member of the Roger Pirates",
+          id: "6020",
+          attribute: "BASE",
+          rank: "C",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/8/81/Bankuro_Anime_Infobox.png/revision/latest?cb=20210321040028"
+        }
+        ]
+      },
+      {
+        character: "Yamon",
+        alias: ["yamon"],
+        cards: [
+        {
+          title: "Member of the Roger Pirates",
+          id: "6021",
+          attribute: "BASE",
+          rank: "C",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/c/ca/Yamon_Manga_Infobox.png/revision/latest?cb=20260405211900"
+        }
+        ]
+      },
+      {
+        character: "Inurashi (Child)",
+        alias: ["inurashi", "dogstorm child", "inurashi age 7", "inurashi child"],
+        cards: [
+        {
+          title: "Inurashi at Age 7 - Roger Apprentice",
+          id: "6022",
+          attribute: "BASE",
+          rank: "C",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/5/50/Inuarashi_at_Age_7.png/revision/latest/scale-to-width-down/1000?cb=20211211002827"
+        }
+        ]
+      },
+      {
+        character: "Nekomamushi (Child)",
+        alias: ["nekomamushi", "cat viper child", "nekomamushi age 7", "nekomamushi child"],
+        cards: [
+        {
+          title: "Nekomamushi at Age 7 - Roger Apprentice",
+          id: "6023",
+          attribute: "BASE",
+          rank: "C",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/2/21/Nekomamushi_at_Age_7.png/revision/latest/scale-to-width-down/1000?cb=20211211002655"
         }
         ]
       }

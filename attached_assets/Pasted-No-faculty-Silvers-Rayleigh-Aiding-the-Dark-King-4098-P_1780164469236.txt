@@ -1,0 +1,124 @@
+No faculty: 
+
+Silvers Rayleigh:
+Aiding the Dark King, 4098, PSY, UR, <:4098:1510283071918964897>, https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/000/4098.png
+Overwhelming Aura of the Dark King, drunk, 3 turns.
+
+Crocus: 
+587, INT, B, <:0587:1510314031657914610>, https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0587.png
+
+Twin Cape Lighthouse Keeper, 588, INT, A, <:0588:1510314234301387024>, https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0588.png
+
+Lighthouse Keeper, 3182, A, <:3182:1510314542297780224>, https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/100/3182.png
+
+Waiting at the Cape to Fulfil a Promise, 3183, PSY, S, https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/100/3183.png,
+Silent Intimidation, regen, itself: true, all: true
+
+Roger Pirates:
+
+Gol D. Roger:
+Roger & Oden - Set Sail to the Vast Ocean, 4057, QCK, S, <:4057:1510340429948649595>, https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/000/4057.png
+count=2
+
+Roger & Oden - Remarkable Grand Adventure, 4058, QCK, SS, <:4058:1510340715056726159>, https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/000/4058.png
+Formidable Onslaught, attackup, itself=true, count=2.
+
+Gol D. Roger/Silvers Rayleigh/Gaban:
+Aiming to Become the World's Greatest Pirates, 4257, STR/INT, SS, <:4257:1510285392920973464>, https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/200/4257.png
+Furious Onslaught, attackup, -1 turns, scount=3, count=3. 
+
+Silvers Rayleigh:
+Roger & Rayleigh & Gaban - Stepping onto God Valley, 4387, INT, SS, <:4387:1510284228636442806>, https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/300/4387.png
+Storming God Valley, defenceup, -1 turns, count=3.
+
+Rayleigh & Gaban, 3517, PSY, S, <:3517:1510312152190156891>, https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/500/3517.png, count: 2.
+
+Rayleigh & Gaban: 
+The Mighty Duo, 3810, PSY/DEX, S, <:3810:1510312834574188594>, https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/800/3810.png
+Unstoppable Onslaught, attackup, itself: true, scount: 2, count: 2.
+
+The Assaulting Duo. 3811, PSY/DEX, SS, <:3811:1510313452789563664>, https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/800/3811.png
+Unstoppable Onslaught, attackup, itself: true, scount: 2, count: 2.
+
+Gaban: 
+3935, PSY, S, <:3395:1510311641294704812>, https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/300/3395.png
+
+Crocus:
+Ship Doctor of the Roger Pirates, 3817, PSY, S, <:3817:1510316240655093830>, https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/800/3817.png
+
+Moon Isaac Jr.:
+6000, BASE, Tactical Staff Officer of the Roger Pirates, C, https://static.wikia.nocookie.net/onepiece/images/6/64/Moon_Isaac_Jr._Anime_Infobox.png/revision/latest?cb=20210411032337
+
+Donquino:
+6003, BASE, Helsman of the Roger Pirates, C, https://static.wikia.nocookie.net/onepiece/images/4/49/Donquino_Anime_Infobox.png/revision/latest?cb=20210124103408
+
+Millet Pine: 
+6004, BASE, Torturer of the Roger Pirates, C, https://static.wikia.nocookie.net/onepiece/images/8/8d/Millet_Pine_Anime_Infobox.png/revision/latest?cb=20210412131305
+
+Rowing: 
+Scholar of the Roger Pirates, 6005, BASE, C, https://static.wikia.nocookie.net/onepiece/images/4/45/Rowing_Anime_Infobox.png/revision/latest?cb=20210124102143
+
+Erio: 
+Information Broker of the Roger Pirates, 6006, BASE, C, https://static.wikia.nocookie.net/onepiece/images/3/36/Erio_Anime_Infobox.png/revision/latest?cb=20210321043944
+
+Spencer: 
+Member of the Roger Pirates, 6007, BASE, C, https://static.wikia.nocookie.net/onepiece/images/9/95/Spencer_Anime_Infobox.png/revision/latest?cb=20210714034828
+
+Petermoo:
+Gunner of the Roger Pirates, 6008, BASE, C, https://static.wikia.nocookie.net/onepiece/images/4/45/Petermoo_Anime_Infobox.png/revision/latest?cb=20210412130635
+
+JacksonBanner:
+Musician of the Roger Pirates, 6009, BASE, C, https://static.wikia.nocookie.net/onepiece/images/c/c6/Jacksonbanner_Anime_Infobox.png/revision/latest?cb=20210404035046
+
+Bluemarine: 
+Shipwright of the Roger Pirates, BASE, 6010, C, https://static.wikia.nocookie.net/onepiece/images/7/7b/Blumarine_Anime_Infobox.png/revision/latest?cb=20210124102746
+
+
+MAX Marx: 
+Cook of the Roger Pirates, BASE,  6011, C, https://static.wikia.nocookie.net/onepiece/images/9/91/MAX_Marx_Anime_Infobox.png/revision/latest?cb=20210328040737
+
+Nozudon & Sambel: 
+3818, PSY, S, <:3818:1510335506498584656>, https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/800/3818.png
+count: 2
+
+Taro: 
+Member of the Roger Pirates, 6012, BASE, C, https://static.wikia.nocookie.net/onepiece/images/3/3c/Taro_Anime_Infobox.png/revision/latest?cb=20210403112556
+
+Doringo: 
+Member of the Roger Pirates, 6013, BASE, C, https://static.wikia.nocookie.net/onepiece/images/3/33/Doringo_Anime_Infobox.png/revision/latest/scale-to-width-down/1000?cb=20210328040148
+
+Ganryu:
+Member of the Roger Pirates, 6014, BASE, C, https://static.wikia.nocookie.net/onepiece/images/9/95/Ganryu_%28Roger_Pirates%29_Anime_Infobox.png/revision/latest?cb=20210404034431
+
+CB Gallant: 
+Member of the Roger Pirates, 6015, BASE, C, https://static.wikia.nocookie.net/onepiece/images/7/77/CB_Gallant_Anime_Infobox.png/revision/latest?cb=20210321032722
+
+Mr. Momora: 
+Member of the Roger Pirates, 6016, BASE, C, https://static.wikia.nocookie.net/onepiece/images/2/22/Mr._Momora_Anime_Infobox.png/revision/latest?cb=20210321035947
+
+Yui:
+Member of the Roger Pirates, 6017, BASE, C, https://static.wikia.nocookie.net/onepiece/images/2/2f/Yui_Anime_Infobox.png/revision/latest?cb=20210321033432
+
+Rangram: 
+Member of the Roger Pirates, 6018, BASE, C, https://static.wikia.nocookie.net/onepiece/images/f/fa/Rangram_Manga_Infobox.png/revision/latest?cb=20250915073155
+
+Mugren:
+Colonel Mugren - Member of the Roger Pirates, 6019, BASE, C, https://static.wikia.nocookie.net/onepiece/images/5/5a/Mugren_Anime_Infobox.png/revision/latest?cb=20210404031141
+
+Bankuro: 
+Member of the Roger Pirates, 6020, BASE, C, https://static.wikia.nocookie.net/onepiece/images/8/81/Bankuro_Anime_Infobox.png/revision/latest?cb=20210321040028
+
+Yamon: 
+Member of the Roger Pirates, 6021, BASE, C, https://static.wikia.nocookie.net/onepiece/images/c/ca/Yamon_Manga_Infobox.png/revision/latest?cb=20260405211900
+
+Kozuki Oden:
+Aspiring to the Grand Voyage , 3619, DEX, S, <:3619:1510340070698123495>, https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/600/3619.png
+
+Welcoming Feast, 3620, DEX, SS, <:3620:1510339915005693992>, https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/600/3620.png
+Entertaining the Voyage, Bleed, -1 Turns, effectAmount=5
+
+Dogstorm:
+Inurashi at Age 7 - Roger Apprentice, 6022, BASE, C, https://static.wikia.nocookie.net/onepiece/images/5/50/Inuarashi_at_Age_7.png/revision/latest/scale-to-width-down/1000?cb=20211211002827
+
+Cat Viper: 
+Nekomamushi at Age 7 - Roger Apprentice, 6023, BASE, C, https://static.wikia.nocookie.net/onepiece/images/2/21/Nekomamushi_at_Age_7.png/revision/latest/scale-to-width-down/1000?cb=20211211002655
