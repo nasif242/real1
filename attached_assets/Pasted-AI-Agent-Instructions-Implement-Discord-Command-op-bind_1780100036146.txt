@@ -1,0 +1,62 @@
+AI Agent Instructions: Implement Discord Command op binder / /binder
+Objective:
+Create a feature-rich, interactive collection binder command for a Discord bot using Node.js and discord.js. The command must support both a prefix text format (op binder) and a slash command format (/binder). It uses canvas drawing to generate a dynamic 3x3 visual grid of cards, incorporates interactive pagination buttons, handles complex sorting/filtering mechanics, and manages user state through buttons, select menus, and modals.
+
+1. Visual Layout & Canvas Generation
+Grid Structure: The command must draw and send a 3x3 grid image representing a card binder page. The main page defaults to showing the 9 latest cards the user has obtained.
+
+Separators: Include distinct grid lines on the canvas that neatly separate the cards into their respective 3x3 slots.
+
+Message Format: The message must be public and visible to everyone (do not use ephemeral flags like "only you can see this").
+
+Embed Theme & Dynamic Titles: The canvas image must be attached to a Discord embed.
+
+The embed background color should be white.
+
+The title of the embed must dynamically change depending on the current active view or filter (e.g., "Main binder", "Luffy binder", "Strawhat Pirates binder", etc.).
+
+Card Ownership UI (Opacity & Overlays):
+
+When displaying a sorted or specific set of cards (where a user might not own every card in that set), check the user's inventory against the target card database.
+
+If the user does not own a specific card in the grid, render that card asset on the canvas with a significantly lower opacity.
+
+Draw an explicit "not owned" text overlay directly over the faded card image on the canvas.
+
+Completion Progress Counter:
+
+At the bottom of the embed text or footer, include a progress tracker showing how many cards the user owns out of the total available cards in that specific filtered set (e.g., "9/100" if they own 9 out of 100 Luffy cards).
+
+2. Interaction & Component Handling
+Pagination (Next & Previous Buttons): Provide "Next" and "Previous" buttons to navigate through pages of the 3x3 grid.
+
+Default Sort Logic: By default (on the "Main binder" page), cards should be displayed in chronological order of acquisition, toggling between Latest Obtained and Oldest Obtained.
+
+Character Search / Sort Button (Discord Modal):
+
+Include a "Sort by Character" button.
+
+When clicked, it must trigger a Discord Modal (Form).
+
+The form will feature a single text input field where the user types a character's name (e.g., "luffy").
+
+Upon form submission, update the view to that specific character's binder (e.g., title becomes "Luffy binder").
+
+Priority Sorting Logic: The cards inside this character filtered view must precisely mimic the internal op collection <name> sorting hierarchy:
+
+Favorited cards first.
+
+Cards currently deployed in the user's team.
+
+Standard rarity sorting from highest to lowest (e.g., Ultra Rare [UR] down to Common [D]).
+
+Faculty / Guild Sorting (Dropdown Select Menu):
+
+Include a String Select Menu component allowing users to sort by major factions/guilds (e.g., "Strawhat Pirates").
+
+Selecting an option updates the view to that faction's binder page (e.g., title becomes "Strawhat Pirates binder"), applying the same ownership opacity checks and completion counters.
+
+3. Technical Requirements
+State Persistence: Ensure the interaction collector accurately tracks the user's active page, selected filters, and search queries across multiple button clicks, modal submissions, and dropdown selections.
+
+Error Handling: Account for edge cases such as empty search queries, factions with zero cards, or users who haven't acquired any cards yet. Ensure collectors time out gracefully without crashing the bot process.
