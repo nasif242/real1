@@ -150,6 +150,7 @@ function buildMarketComponents(listings, session, total, userId) {
         { label: 'QCK', value: 'QCK', default: session.filterAttr === 'QCK' },
         { label: 'INT', value: 'INT', default: session.filterAttr === 'INT' },
         { label: 'PSY', value: 'PSY', default: session.filterAttr === 'PSY' },
+        { label: 'BASE', value: 'BASE', default: session.filterAttr === 'BASE' },
       ])
   );
 
@@ -241,7 +242,7 @@ async function renderMarket(target, userId, session, isUpdate = false) {
 }
 
 const MARKET_RANKS = new Set(['D', 'C', 'B', 'A', 'S', 'SS', 'UR']);
-const MARKET_ATTRS = { str: 'STR', dex: 'DEX', qck: 'QCK', int: 'INT', psy: 'PSY' };
+const MARKET_ATTRS = { str: 'STR', dex: 'DEX', qck: 'QCK', int: 'INT', psy: 'PSY', base: 'BASE' };
 
 function parseMarketArgs(args) {
   let filterRank = null, filterAttr = null, filterStar = null;

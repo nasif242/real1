@@ -186,15 +186,15 @@ async function _spawnDrop(channelId) {
       }
     }
 
-    // Prefer non-artifact, non-ship pullable cards of the chosen rank
-    let pool = cards.filter(c => c.pullable && !c.artifact && !c.ship && c.rank === chosenRank);
+    // Prefer non-artifact, non-ship, non-BASE pullable cards of the chosen rank
+    let pool = cards.filter(c => c.pullable && !c.artifact && !c.ship && c.attribute !== 'BASE' && c.rank === chosenRank);
     if (!pool.length) {
-      // fallback to any non-artifact non-ship pullable card
-      pool = cards.filter(c => c.pullable && !c.artifact && !c.ship);
+      // fallback to any non-artifact non-ship non-BASE pullable card
+      pool = cards.filter(c => c.pullable && !c.artifact && !c.ship && c.attribute !== 'BASE');
     }
     if (!pool.length) {
-      // ultimate fallback: any non-artifact pullable card
-      pool = cards.filter(c => c.pullable && !c.artifact);
+      // ultimate fallback: any non-artifact non-BASE pullable card
+      pool = cards.filter(c => c.pullable && !c.artifact && c.attribute !== 'BASE');
     }
     if (!pool.length) return;
     const card = pool[Math.floor(Math.random() * pool.length)];

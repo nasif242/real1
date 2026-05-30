@@ -584,6 +584,43 @@ function clearDuelTimeout(state) {
   }
 }
 
+async function endDuelByInactivity(state, msg) {
+  if (state.finished) return;
+  state.finished = true;
+  clearDuelTimeout(state);
+
+  const p1HP = state.player1Cards.reduce((sum, c) => sum + (c.alive ? (c.currentHP || 0) : 0), 0);
+  const p2HP = state.player2Cards.reduce((sum, c) => sum + (c.alive ? (c.currentHP || 0) : 0), 0);
+
+  let resultLine;
+  if (p1HP > p2HP) {
+    resultLine = `${state.discordUser1.username} wins by HP! (${formatAmount(p1HP)} vs ${formatAmount(p2HP)})`;
+  } else if (p2HP > p1HP) {
+    resultLine = `${state.discordUser2.username} wins by HP! (${formatAmount(p2HP)} vs ${formatAmount(p1HP)})`;
+  } else {
+    resultLine = `It\'s a draw — both teams have equal HP! (${formatAmount(p1HP)} each)`;
+  }
+
+  const inactivityEmbed = new EmbedBuilder()
+    .setColor('#FFFFFF')
+    .setTitle('Duel Ended — Inactivity')
+    .setDescription(`Both players failed to act twice in a row. Duel decided by remaining HP.\n\n${resultLine}`)
+    .setAuthor({ name: state.discordUser1.username, iconURL: state.discordUser1.displayAvatarURL() });
+
+  const latestMsg = state.lastMsg || msg;
+  try {
+    await latestMsg.edit({ embeds: [inactivityEmbed], components: [] });
+  } catch (e) {
+    try { if (latestMsg && latestMsg.channel) await latestMsg.channel.send({ embeds: [inactivityEmbed] }); } catch {}
+  }
+  try {
+    duelStates.delete(latestMsg.id);
+    if (Array.isArray(state.messageHistory)) {
+      for (const mid of state.messageHistory) { try { duelStates.delete(mid); } catch {} }
+    }
+  } catch {}
+}
+
 function setupTimeout(state, msg) {
   clearDuelTimeout(state);
   if (!state.finished) {
@@ -603,6 +640,15 @@ function setupTimeout(state, msg) {
         if (state.turn === 'player1') state.lastP1Action = actionText;
         else state.lastP2Action = actionText;
         appendLog(state, `${timedOutUsername} took too long. Turn passed.`);
+        state.consecutiveTimeouts = (state.consecutiveTimeouts || 0) + 1;
+        if (state.consecutiveTimeouts >= 2) {
+          try {
+            await endDuelByInactivity(state, currentMsg);
+          } catch (e) {
+            console.error('Inactivity end error:', e);
+          }
+          return;
+        }
         try {
           await finalizeAction(state, currentMsg, true);
         } catch (e) {
@@ -627,6 +673,9 @@ function canTeamAct(team) {
 }
 
 async function finalizeAction(state, msg, timedOut = false, appliedCut = false) {
+  // Reset consecutive timeout counter whenever a player makes a real move
+  if (!timedOut) state.consecutiveTimeouts = 0;
+
   // Check if player's team is defeated
   const currentTeam = state.turn === 'player1' ? state.player1Cards : state.player2Cards;
   const opponentTeam = state.turn === 'player1' ? state.player2Cards : state.player1Cards;
@@ -1510,6 +1559,7 @@ module.exports = {
           lastP1Action: '',
           lastP2Action: '',
           timeout: null,
+          consecutiveTimeouts: 0,
           embedImage: null,
           gifMessageId: null,
           discordUser1: pending.discordUser1,

@@ -44,7 +44,7 @@ function compareCards(a, b, mode, user) {
 
 function sortAndFilter(items, mode, user) {
   let filtered = Array.isArray(items) ? [...items] : [];
-  const attrMap = { dex: 'DEX', str: 'STR', qck: 'QCK', psy: 'PSY', int: 'INT' };
+  const attrMap = { dex: 'DEX', str: 'STR', qck: 'QCK', psy: 'PSY', int: 'INT', base: 'BASE' };
   const { parseCardAttributes } = require('../utils/cards');
 
   if (mode && mode.endsWith('-only')) {
@@ -161,6 +161,7 @@ function makeSortMenu(userId) {
         { label: 'Only QCK', value: 'qck-only' },
         { label: 'Only PSY', value: 'psy-only' },
         { label: 'Only INT', value: 'int-only' },
+        { label: 'Only BASE', value: 'base-only' },
         { label: 'Only Ships', value: 'ships-only' },
         { label: 'Only Artifacts', value: 'artifacts-only' }
       ])
