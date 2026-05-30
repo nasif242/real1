@@ -17,6 +17,14 @@ const RANK_COLORS = {
   UR: '#ff00f0'
 };
 
+const ATTRIBUTE_COLORS = {
+  STR: '#FF4444',
+  DEX: '#44AA44',
+  QCK: '#4DABF7',
+  INT: '#9966CC',
+  PSY: '#FFD54F'
+};
+
 async function loadImageWithTimeout(url, ms = 6000) {
   return Promise.race([
     loadImage(url),
@@ -32,13 +40,14 @@ function getEmojiUrl(emoji) {
   return `https://cdn.discordapp.com/emojis/${m[1]}.png`;
 }
 
-// For each slot, decide which URL to load:
-//  - ships & artifacts → image_url
-//  - regular cards → emoji CDN url
+// Image source per card type:
+//   ships    → image_url  (full artwork)
+//   artifacts → emoji CDN (fills slot better than the small catbox webp)
+//   regular  → emoji CDN
 function resolveImageUrl(slot) {
   if (!slot || !slot.cardDef) return null;
   const { cardDef } = slot;
-  if (cardDef.ship || cardDef.artifact) return cardDef.image_url || null;
+  if (cardDef.ship) return cardDef.image_url || getEmojiUrl(cardDef.emoji) || null;
   return getEmojiUrl(cardDef.emoji) || cardDef.image_url || null;
 }
 
@@ -74,8 +83,10 @@ async function generateBinderCanvas(slots) {
     const imgResult = imageResults[i];
     const img = imgResult && imgResult.status === 'fulfilled' ? imgResult.value : null;
 
+    // Padding: ships get a small border; artifacts & regular fill the slot
+    const PAD = cardDef.ship ? 4 : cardDef.artifact ? 0 : 8;
+
     if (img) {
-      const PAD = 8;
       ctx.globalAlpha = owned ? 1.0 : 0.2;
       ctx.drawImage(img, x + PAD, y + PAD, CELL_W - PAD * 2, CELL_H - PAD * 2);
       ctx.globalAlpha = 1.0;
@@ -87,25 +98,36 @@ async function generateBinderCanvas(slots) {
     }
 
     if (!owned) {
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.62)';
+      // Dark overlay
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
       ctx.fillRect(x + 1, y + 1, CELL_W - 2, CELL_H - 2);
+
+      // "Not Owned" text — shifted up to make room for ID below
       ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 13px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('Not Owned', x + CELL_W / 2, y + CELL_H / 2);
+      ctx.fillText('Not Owned', x + CELL_W / 2, y + CELL_H / 2 - 10);
+
+      // Card ID below "Not Owned" in the card's attribute colour
+      const attrColor = ATTRIBUTE_COLORS[cardDef.attribute] || '#aaaaaa';
+      ctx.fillStyle = attrColor;
+      ctx.font = 'bold 11px sans-serif';
+      ctx.fillText(`#${cardDef.id}`, x + CELL_W / 2, y + CELL_H / 2 + 8);
     }
 
-    // Rank badge top-right
-    const rank = cardDef.rank || '?';
-    ctx.shadowColor = '#000000';
-    ctx.shadowBlur = 5;
-    ctx.fillStyle = RANK_COLORS[rank] || '#ffffff';
-    ctx.font = 'bold 11px sans-serif';
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'top';
-    ctx.fillText(rank, x + CELL_W - 6, y + 6);
-    ctx.shadowBlur = 0;
+    // Rank badge — only for ships and artifacts (not regular attacking cards)
+    if (cardDef.ship || cardDef.artifact) {
+      const rank = cardDef.rank || '?';
+      ctx.shadowColor = '#000000';
+      ctx.shadowBlur = 5;
+      ctx.fillStyle = RANK_COLORS[rank] || '#ffffff';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'top';
+      ctx.fillText(rank, x + CELL_W - 6, y + 6);
+      ctx.shadowBlur = 0;
+    }
   }
 
   // Grid separator lines
