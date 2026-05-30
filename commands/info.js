@@ -450,7 +450,13 @@ function buildPackEmbed(crewDef, discordUser, pageIndex = 0) {
 
   // Get unique cards by character for display, sorted by attribute then name
   const uniqueByCharacter = new Map();
-  const typeOrder = card => (card.artifact ? 2 : card.ship ? 3 : 1);
+  // Order: regular (1) → BASE (2) → artifact (3) → ship (4)
+  const typeOrder = card => {
+    if (card.artifact) return 3;
+    if (card.ship) return 4;
+    if (card.attribute === 'BASE') return 2;
+    return 1;
+  };
   crewCards.forEach(c => {
     const current = uniqueByCharacter.get(c.character);
     if (!current || typeOrder(c) < typeOrder(current)) {
@@ -461,14 +467,14 @@ function buildPackEmbed(crewDef, discordUser, pageIndex = 0) {
   // Attribute order: STR, DEX, QCK, PSY, INT
   const attributeOrder = ['STR', 'DEX', 'QCK', 'PSY', 'INT'];
 
-  // Sort by attribute, then by character name. Artifacts should always come last.
+  // Sort: regular → BASE → artifact → ship, then attribute, then name.
   const sortedCharacters = Array.from(uniqueByCharacter.values())
     .sort((a, b) => {
-      const typeOrder = card => (card.artifact ? 2 : card.ship ? 3 : 1);
       const aType = typeOrder(a);
       const bType = typeOrder(b);
       if (aType !== bType) return aType - bType;
-      if (aType !== 2 && aType !== 3) {
+      // Within regular cards, sort by attribute
+      if (aType === 1) {
         const aAttrIdx = attributeOrder.indexOf(a.attribute || 'STR');
         const bAttrIdx = attributeOrder.indexOf(b.attribute || 'STR');
         if (aAttrIdx !== bAttrIdx) return aAttrIdx - bAttrIdx;
@@ -504,10 +510,11 @@ function buildPackEmbed(crewDef, discordUser, pageIndex = 0) {
   const rankEmoji = rankEmojis[crewDef.rank] || '';
 
   // Build character list: hide ship emoji and mark ships with (ship)
+  const BASE_ATTR_EMOJI = '<:BASE:1510322504194064404>';
   const characterLines = sortedCharacters.map(card => {
     if (card.ship) return `${card.character} (ship)`;
-    const emoji = card.emoji || '';
-    return `${emoji} ${card.character}`;
+    const emoji = card.emoji || (card.attribute === 'BASE' ? BASE_ATTR_EMOJI : '');
+    return `${emoji} ${card.character}`.trim();
   });
 
   // Join all characters (no limit)

@@ -78,7 +78,14 @@ async function createAttachmentFromUrl(url) {
     const buffer = Buffer.from(arrayBuffer);
     let fileName;
     try {
-      fileName = path.basename(new URL(url).pathname) || 'image.png';
+      const parsed = new URL(url);
+      // For wikia-style URLs the real filename is a path segment that contains
+      // an image extension — e.g. /images/6/64/Moon_Isaac_Jr.png/revision/latest.
+      // path.basename() of that full path returns 'latest' (no extension), so
+      // we scan path segments in reverse and pick the first one with an image ext.
+      const segments = parsed.pathname.split('/');
+      const imgSegment = [...segments].reverse().find(s => /\.(png|gif|jpe?g|webp)$/i.test(s));
+      fileName = imgSegment || path.basename(parsed.pathname) || 'image.png';
     } catch {
       fileName = 'image.png';
     }
@@ -200,7 +207,8 @@ async function _spawnDrop(channelId) {
         .setStyle(ButtonStyle.Secondary)
     );
 
-    const displayEmoji = card && card.ship ? '' : (card && card.emoji ? `${card.emoji} ` : '');
+    const BASE_ATTR_EMOJI = '<:BASE:1510322504194064404>';
+    const displayEmoji = card && card.ship ? '' : (card && card.emoji ? `${card.emoji} ` : (card && card.attribute === 'BASE' ? `${BASE_ATTR_EMOJI} ` : ''));
     const dropContent = `A wild **${displayEmoji}${card.character} (${card.rank})** appeared! \`${formatCardId(card.id)}\``;
     const imageUrl = card.image_url;
     let msg;

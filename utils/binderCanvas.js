@@ -141,7 +141,7 @@ async function generateBinderCanvas(slots) {
       const rank = cardDef.rank || '?';
       ctx.shadowColor = '#000000';
       ctx.shadowBlur = 5;
-      ctx.fillStyle = RANK_COLORS[rank] || '#ffffff';
+      ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 11px sans-serif';
       ctx.textAlign = 'right';
       ctx.textBaseline = 'top';
