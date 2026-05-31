@@ -1220,7 +1220,104 @@ exports.moreCards = [
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0976.png"
         }
         ]
-      }
+      },
+      {
+        character: "Rika",
+        alias: ["rika young", "rika pre timeskip", "rika shells town"],
+        cards: [
+        {
+          title: "Young Girl from Shell's Town",
+          id: "6027",
+          attribute: "BASE",
+          rank: "D",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/5/52/Rika_Anime_Pre_Timeskip_Infobox.png/revision/latest?cb=20190625081911"
+        }
+        ]
+      },
+      {
+        character: "Merry",
+        alias: ["merry", "kaya's butler"],
+        cards: [
+        {
+          title: "Kaya's Butler",
+          id: "6029",
+          attribute: "BASE",
+          rank: "C",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/3/39/Merry_Anime_Pre_Timeskip_Infobox.png/revision/latest?cb=20250722014205"
+        },
+        {
+          title: "Post Timeskip - Kaya's Butler",
+          id: "6030",
+          attribute: "BASE",
+          rank: "B",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/b/ba/Merry_Anime_Post_Timeskip_Infobox.png/revision/latest?cb=20251026160814"
+        }
+        ]
+      },
+      {
+        character: "Pandaman",
+        alias: ["pandaman"],
+        cards: [
+        {
+          title: "Easter egg Character",
+          id: "6031",
+          attribute: "BASE",
+          rank: "S",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/9/9e/Pandaman_Digitally_Colored_Manga.png/revision/latest?cb=20211120014130"
+        },
+        {
+          title: "Even Stronger than Satoru Gojo Himself",
+          id: "6032",
+          attribute: "BASE",
+          rank: "SS",
+          image_url: "https://i.pinimg.com/1200x/f9/b2/b0/f9b2b0bf25544790bee921a8bfe21656.jpg",
+          special_attack: {
+            name: "Wrestling abilities"
+          },
+          effect: "attackup",
+          itself: true
+        }
+        ]
+      },
+      {
+        character: "Banchina",
+        alias: ["banchina", "usopp's mother"],
+        cards: [
+        {
+          title: "Usopp's Mother",
+          id: "6043",
+          attribute: "BASE",
+          rank: "D",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/4/48/Banchina_Anime_Infobox.png/revision/latest?cb=20250717210954"
+        }
+        ]
+      },
+      {
+        character: "Johnny",
+        alias: ["johnny post timeskip"],
+        cards: [
+        {
+          title: "Former Bounty Hunting Partner of Roronoa Zoro",
+          id: "6041",
+          attribute: "BASE",
+          rank: "A",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/e/ee/Johnny_Manga_Post_Timeskip_Infobox.png/revision/latest?cb=20231120150337"
+        }
+        ]
+      },
+      {
+        character: "Yosaku",
+        alias: ["yosaku post timeskip"],
+        cards: [
+        {
+          title: "Former Bounty Hunting Partner of Roronoa Zoro",
+          id: "6042",
+          attribute: "BASE",
+          rank: "A",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/4/4a/Yosaku_Manga_Post_Timeskip_Infobox.png/revision/latest?cb=20231120150325"
+        }
+        ]
+      },
     ]
   },
   {
@@ -1766,6 +1863,13 @@ exports.moreCards = [
           rank: "S",
           emoji: "<:1000049518:1502772627096207370>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/200/4244.png"
+        },
+        {
+          title: "Waitress at the 153rd Marine Branch",
+          id: "6028",
+          attribute: "BASE",
+          rank: "C",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/1/1b/Rika_Manga_Post_Timeskip_Infobox.png/revision/latest?cb=20170318151459"
         }
         ]
       }
@@ -2085,6 +2189,133 @@ exports.moreCards = [
           rank: "A",
           emoji: "<:0599:1502682592619790441>",
           image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0599.png"
+        }
+        ]
+      }
+    ]
+  },
+  {
+    faculty: "Island of Rare Animals",
+    characters: [
+      {
+        character: "Usagihebi",
+        alias: ["usagihebi"],
+        cards: [
+        {
+          title: "Animal of the Island of Rare Animals",
+          id: "6033",
+          attribute: "BASE",
+          rank: "C",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/3/3e/Usagihebi_Anime_Infobox.png/revision/latest?cb=20171030132109"
+        }
+        ]
+      },
+      {
+        character: "Cocox",
+        alias: ["cocox"],
+        cards: [
+        {
+          title: "Animal of the Island of Rare Animals",
+          id: "6034",
+          attribute: "BASE",
+          rank: "C",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/b/bc/Cocox_Anime_Infobox.png/revision/latest?cb=20180510134405"
+        }
+        ]
+      },
+      {
+        character: "Lionbuta",
+        alias: ["lionbuta"],
+        cards: [
+        {
+          title: "Animal of the Island of Rare Animals",
+          id: "6035",
+          attribute: "BASE",
+          rank: "C",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/0/01/Lionbuta_Anime_Infobox.png/revision/latest?cb=20171030132527"
+        }
+        ]
+      },
+      {
+        character: "Kabagorila",
+        alias: ["kabagorila"],
+        cards: [
+        {
+          title: "Animal of the Island of Rare Animals",
+          id: "6036",
+          attribute: "BASE",
+          rank: "C",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/a/af/Kabagorilla_Anime_Infobox.png/revision/latest?cb=20210315030158"
+        }
+        ]
+      },
+      {
+        character: "Kirinkodanuki",
+        alias: ["kirinkodanuki", "kirinkodansuki"],
+        cards: [
+        {
+          title: "Animal of the Island of Rare Animals",
+          id: "6037",
+          attribute: "BASE",
+          rank: "C",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/8/89/Kirinkodanuki_Anime_Infobox.png/revision/latest?cb=20210315030202"
+        }
+        ]
+      },
+      {
+        character: "Kamonohitsuji",
+        alias: ["kamonohitsuji"],
+        cards: [
+        {
+          title: "Animal of the Island of Rare Animals",
+          id: "6038",
+          attribute: "BASE",
+          rank: "C",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/f/f1/Kamonohitsuji_Anime_Infobox.png/revision/latest?cb=20210315030159"
+        }
+        ]
+      },
+      {
+        character: "Saikangaroo",
+        alias: ["saikangaroo"],
+        cards: [
+        {
+          title: "Animal of the Island of Rare Animals",
+          id: "6039",
+          attribute: "BASE",
+          rank: "C",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/a/a7/Saikangaroo_Anime_Infobox.png/revision/latest?cb=20210315030201"
+        }
+        ]
+      },
+      {
+        character: "Gaimon",
+        alias: ["gaimon island rare animals"],
+        cards: [
+        {
+          id: "0040",
+          attribute: "PSY",
+          rank: "C",
+          emoji: "<:gaimon:1510470171473739969>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0040.png"
+        }
+        ]
+      }
+    ]
+  },
+  {
+    faculty: "Shimotsuki Family",
+    characters: [
+      {
+        character: "Shimotsuki Koushirou",
+        alias: ["koushirou", "shimotsuki koushirou", "koushiro"],
+        cards: [
+        {
+          title: "Master Swordsman - Teacher of Roronoa Zoro",
+          id: "6040",
+          attribute: "BASE",
+          rank: "A",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/3/39/Shimotsuki_Koushirou_Anime_Pre_Timeskip_Infobox.png/revision/latest?cb=20130619225803"
         }
         ]
       }

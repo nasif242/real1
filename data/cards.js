@@ -3462,6 +3462,20 @@ const consolidatedCardData = [
           image_url: "https://static.wikia.nocookie.net/onepiece/images/2/21/Nekomamushi_at_Age_7.png/revision/latest/scale-to-width-down/1000?cb=20211211002655"
         }
         ]
+      },
+      {
+        character: "Douglas Bullet",
+        alias: ["douglas bullet", "bullet"],
+        cards: [
+        {
+          title: "Former Member of the Roger Pirates",
+          id: "2650",
+          attribute: "STR",
+          rank: "S",
+          emoji: "<:2650:1510364754563039413>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/2/600/2650.png"
+        }
+        ]
       }
     ]
   },
@@ -3971,6 +3985,454 @@ const consolidatedCardData = [
           },
           effect: "drunk",
           effectDuration: 3
+        }
+        ]
+      },
+      {
+        character: "Hongo",
+        alias: ["hongo"],
+        cards: [
+        {
+          id: "3996",
+          attribute: "PSY",
+          rank: "S",
+          emoji: "<:3996:1510365396568510495>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/900/3996.png",
+          special_attack: {
+            name: "Emotional Kick"
+          },
+          effect: "regen",
+          itself: true,
+          effectDuration: -1
+        },
+        {
+          id: "4548",
+          attribute: "STR",
+          rank: "S",
+          emoji: "<:4548:1510365594937983106>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/500/4548.png",
+          special_attack: {
+            name: "Handing Over the Deadly Poison"
+          },
+          effect: "cut",
+          effectDuration: -1,
+          effectAmount: 3
+        }
+        ]
+      },
+      {
+        character: "Rockstar",
+        alias: ["rockstar"],
+        cards: [
+        {
+          id: "2553",
+          attribute: "STR",
+          rank: "S",
+          emoji: "<:2553:1510366726607474740>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/2/500/2553.png"
+        }
+        ]
+      },
+      {
+        character: "Red-Hair Pirates (Newcomer)",
+        alias: ["red-hair pirates newcomer", "red hair pirates newcomer"],
+        cards: [
+        {
+          title: "Red-Hair Pirates (Newcomer)",
+          id: "3360",
+          attribute: "PSY",
+          rank: "S",
+          emoji: "<:3360:1510367098415616172>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/300/3360.png"
+        }
+        ]
+      },
+      {
+        character: "Demon-King-Cleaving Sword",
+        alias: ["demon-king-cleaving sword"],
+        cards: [
+        {
+          title: "Demon-King-Cleaving Sword",
+          id: "4022",
+          attribute: "STR",
+          rank: "S",
+          emoji: "<:4022:1510367397603840141>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/000/4022.png"
+        }
+        ]
+      },
+      {
+        character: "Uta",
+        alias: ["uta"],
+        cards: [
+        {
+          title: "Uta at Age 4",
+          id: "6024",
+          attribute: "BASE",
+          rank: "C",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/5/5e/Uta_Age_4.png/revision/latest/scale-to-width-down/1000?cb=20250818013715"
+        }
+        ]
+      },
+      {
+        character: "Oli",
+        alias: ["oli"],
+        cards: [
+        {
+          title: "Pirate Captain - Subordinate to the Red Haired Pirates",
+          id: "6025",
+          attribute: "BASE",
+          rank: "B",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/f/f8/Oli_Anime_Infobox.png/revision/latest/scale-to-width-down/1000?cb=20240623020916"
+        }
+        ]
+      },
+      {
+        character: "Ribbitini",
+        alias: ["ribbitini"],
+        cards: [
+        {
+          title: "Frog toes",
+          id: "4235",
+          attribute: "QCK",
+          rank: "S",
+          emoji: "<:4235:1510369609944006877>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/200/4235.png",
+          special_attack: {
+            name: "Captain's Protection"
+          },
+          effect: "defenseup",
+          itself: true
+        }
+        ]
+      },
+      {
+        character: "Fugar",
+        alias: ["fugar"],
+        cards: [
+        {
+          title: "The Adventurer",
+          id: "4234",
+          attribute: "INT",
+          rank: "S",
+          emoji: "<:4234:1510370307758624808>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/200/4234.png",
+          special_attack: {
+            name: "Bandmaster's Protection"
+          },
+          effect: "defenseup",
+          itself: true
+        }
+        ]
+      },
+      {
+        character: "Pururu",
+        alias: ["pururu"],
+        cards: [
+        {
+          title: "The Brrave",
+          id: "4236",
+          attribute: "PSY",
+          rank: "S",
+          emoji: "<:4236:1510370763603968170>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/200/4236.png"
+        }
+        ]
+      },
+      {
+        character: "Linaria",
+        alias: ["linaria"],
+        cards: [
+        {
+          title: "\"Igniting\" - Captain of the Night Butterfly Pirates",
+          id: "6026",
+          attribute: "BASE",
+          rank: "B",
+          image_url: "https://static.wikia.nocookie.net/onepiece/images/b/b8/Linaria_Anime_Infobox.png/revision/latest?cb=20240714020915"
+        }
+        ]
+      }
+    ]
+  },
+  {
+    faculty: "Blackbeard Pirates",
+    characters: [
+      {
+        character: "Marshall D. Teach",
+        alias: ["marshall d teach", "blackbeard", "teach"],
+        cards: [
+        {
+          id: "446",
+          attribute: "STR",
+          rank: "A",
+          emoji: "<:0446:1510372470379642991>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/400/0446.png"
+        },
+        {
+          title: "Blackbeard",
+          id: "447",
+          attribute: "STR",
+          rank: "S",
+          emoji: "<:0447:1510372723191189727>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/400/0447.png"
+        },
+        {
+          title: "Emperor and Commodore of the Blackbeard Pirates",
+          id: "4562",
+          attribute: "QCK",
+          rank: "SS",
+          emoji: "<:4562:1510373445685215293>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/500/4562.png",
+          special_attack: {
+            name: "Emperor Advancing to Take the World"
+          }
+        },
+        {
+          title: "Emperor Advancing to his Ambition",
+          id: "4561",
+          attribute: "QCK",
+          rank: "SS",
+          emoji: "<:4561:1510374023081627798>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/500/4561.png",
+          special_attack: {
+            name: "Emperor Advancing to Take the World"
+          }
+        },
+        {
+          title: "Incoming News",
+          id: "4402",
+          attribute: "STR",
+          rank: "S",
+          emoji: "<:4402:1510375818935930991>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/400/4402.png"
+        },
+        {
+          title: "Blackbeard & Shiryu",
+          id: "4269",
+          attribute: "QCK",
+          rank: "S",
+          emoji: "<:4269:1510376049844682813>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/200/4269.png"
+        },
+        {
+          title: "Starting the Battle of the Worst Generation",
+          id: "4147",
+          attribute: "DEX",
+          rank: "SS",
+          emoji: "<:4147:1510442669187530822>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/100/4147.png",
+          special_attack: {
+            name: "Tremor Crush"
+          }
+        },
+        {
+          title: "After the Road Ponegliff",
+          id: "4146",
+          attribute: "DEX",
+          rank: "S",
+          emoji: "<:4146:1510443129101095012>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/100/4146.png"
+        },
+        {
+          title: "Emperor Chasing the Pirate Empress",
+          id: "4100",
+          attribute: "STR",
+          rank: "SS",
+          emoji: "<:4100:1510443515686162472>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/100/4100.png",
+          special_attack: {
+            name: "Darkness of Despair"
+          }
+        },
+        {
+          title: "Intervening Emperor",
+          id: "4099",
+          attribute: "STR",
+          rank: "S",
+          emoji: "<:4099:1510443972043215039>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/000/4099.png"
+        },
+        {
+          title: "Absolute Almighty Powers",
+          id: "4458",
+          attribute: "INT",
+          rank: "UR",
+          emoji: "<:4458:1510375180135043082>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/400/4458.png",
+          special_attack: {
+            name: "Despair-Including Darkness and Tremors"
+          },
+          effect: "doomed",
+          effectDuration: 6,
+          count: 3,
+          scount: 3
+        }
+        ]
+      },
+      {
+        character: "Blackbeard & Kuzan",
+        alias: ["blackbeard kuzan", "blackbeard & kuzan", "common interests"],
+        cards: [
+        {
+          title: "Common Interests",
+          id: "4522",
+          attribute: "INT",
+          rank: "SS",
+          emoji: "<:4522:1510374482697785625>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/500/4522.png",
+          special_attack: {
+            name: "Drinking Together"
+          },
+          effect: "drunk",
+          count: 2,
+          scount: 2
+        }
+        ]
+      },
+      {
+        character: "Jesus Burgess",
+        alias: ["jesus burgess", "burgess", "champion"],
+        cards: [
+        {
+          id: "1273",
+          attribute: "STR",
+          rank: "A",
+          emoji: "<:1273:1510444806592008303>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/1/200/1273.png"
+        },
+        {
+          title: "Champion",
+          id: "1274",
+          attribute: "STR",
+          rank: "S",
+          emoji: "<:1274:1510444988109160618>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/1/200/1274.png"
+        },
+        {
+          title: "Corrida Coliseum A-Block Champion",
+          id: "1797",
+          attribute: "DEX",
+          rank: "A",
+          emoji: "<:1797:1510445511004655656>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/1/700/1797.png"
+        },
+        {
+          title: "Assassin in the Birdcage",
+          id: "1798",
+          attribute: "DEX",
+          rank: "S",
+          emoji: "<:1798:1510445979139051530>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/1/700/1798.png"
+        },
+        {
+          title: "Mr. Stone",
+          id: "2036",
+          attribute: "INT",
+          rank: "A",
+          emoji: "<:2036:1510446243921399959>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/2/000/2036.png"
+        },
+        {
+          title: "Blackbeard Pirates",
+          id: "2037",
+          attribute: "INT",
+          rank: "S",
+          emoji: "<:2037:1510446483361628251>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/2/000/2037.png"
+        },
+        {
+          title: "Brawny Power-User-Hunting Captain",
+          id: "2125",
+          attribute: "QCK",
+          rank: "A",
+          emoji: "<:2125:1510447175811862689>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/2/100/2125.png"
+        },
+        {
+          title: "Corrida Coliseum Finals: Battle Royale",
+          id: "2917",
+          attribute: "STR",
+          rank: "S",
+          emoji: "<:2917:1510447506289332304>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/2/900/2917.png"
+        },
+        {
+          title: "Champion on the Attack",
+          id: "3286",
+          attribute: "INT",
+          rank: "S",
+          emoji: "<:3286:1510447831473983688>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/200/3286.png"
+        },
+        {
+          title: "Champion Targeting Power-Users",
+          id: "3642",
+          attribute: "INT",
+          rank: "S",
+          emoji: "<:3642:1510448241030861051>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/3/600/3642.png"
+        },
+        {
+          title: "New Found Powers",
+          id: "4101",
+          attribute: "STR",
+          rank: "S",
+          emoji: "<:4101:1510448439433891883>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/100/4101.png"
+        },
+        {
+          title: "User of the Strong-Strong Fruit",
+          id: "4102",
+          attribute: "STR",
+          rank: "SS",
+          emoji: "<:4102:1510448689062220017>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/100/4102.png",
+          special_attack: {
+            name: "Mountain-Heaving Strength"
+          },
+          effect: "attackup",
+          itself: true,
+          effectDuration: -1,
+          effectAmount: 20
+        },
+        {
+          title: "Strength Aimed at the Heart",
+          id: "4222",
+          attribute: "INT",
+          rank: "S",
+          emoji: "<:4222:1510449397140295861>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/200/4222.png"
+        },
+        {
+          title: "Hurled Boulder",
+          id: "4533",
+          attribute: "INT",
+          rank: "S",
+          emoji: "<:4533:1510449734760927283>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/500/4533.png"
+        }
+        ]
+      },
+      {
+        character: "Burgess & Shiryu",
+        alias: ["burgess shiryu", "burgess & shiryu"],
+        cards: [
+        {
+          title: "Leading Might and Invisibility",
+          id: "4551",
+          attribute: "QCK",
+          rank: "SS",
+          emoji: "<:4551:1510450276094709950>",
+          image_url: "https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/500/4551.png",
+          special_attack: {
+            name: "Coordinated Might and Invisibility"
+          },
+          effect: "attackup",
+          itself: true,
+          effectDuration: -1,
+          effectAmount: 20,
+          count: 2,
+          scount: 2
         }
         ]
       }
